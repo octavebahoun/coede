@@ -42,7 +42,7 @@ import {
   orderBy
 } from "firebase/firestore";
 
-let currentLoggedInUserEmail = "teamexellence@gmail.com"; // Default premium user matching metadata!
+let currentLoggedInUserEmail = "teamexecellence@gmail.com"; // Default premium user matching metadata!
 
 const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf8"));
 const firebaseApp = initializeApp(firebaseConfig);
@@ -90,6 +90,14 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   };
   console.error("Firestore Error: ", JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
+}
+
+function respondWithFirestoreError(res: any, error: unknown, operationType: OperationType, path: string | null) {
+  try {
+    handleFirestoreError(error, operationType, path);
+  } catch (err: any) {
+    res.status(500).setHeader("Content-Type", "application/json").send(err.message);
+  }
 }
 
 // Seed function to initialize the CodeArena cloud database with elite starting players
@@ -214,8 +222,7 @@ async function startServer() {
       }
       res.json(userSnap.data());
     } catch (error) {
-      handleFirestoreError(error, OperationType.GET, `users/${currentLoggedInUserEmail}`);
-      res.status(500).json({ error: "Internal Server Error" });
+      respondWithFirestoreError(res, error, OperationType.GET, `users/${currentLoggedInUserEmail}`);
     }
   });
 
@@ -260,8 +267,7 @@ async function startServer() {
       currentLoggedInUserEmail = email;
       res.json({ success: true, user: userData });
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `users/${email}`);
-      res.status(500).json({ error: "Internal Server Error" });
+      respondWithFirestoreError(res, error, OperationType.WRITE, `users/${email}`);
     }
   });
 
@@ -294,8 +300,7 @@ async function startServer() {
       usersList.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
       res.json(usersList);
     } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, "users");
-      res.status(500).json({ error: "Internal Server Error" });
+      respondWithFirestoreError(res, error, OperationType.LIST, "users");
     }
   });
 
@@ -323,8 +328,7 @@ async function startServer() {
         recentScores: user.recentScores
       });
     } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, "users");
-      res.status(500).json({ error: "Internal Server Error" });
+      respondWithFirestoreError(res, error, OperationType.LIST, "users");
     }
   });
 
@@ -358,8 +362,7 @@ async function startServer() {
       await setDoc(userRef, updatedUser);
       res.json({ success: true, user: updatedUser });
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `users/${currentLoggedInUserEmail}`);
-      res.status(500).json({ error: "Internal Server Error" });
+      respondWithFirestoreError(res, error, OperationType.WRITE, `users/${currentLoggedInUserEmail}`);
     }
   });
 
@@ -374,8 +377,7 @@ async function startServer() {
       currentLoggedInUserEmail = "";
       res.json({ success: true });
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `users/${currentLoggedInUserEmail}`);
-      res.status(500).json({ error: "Internal Server Error" });
+      respondWithFirestoreError(res, error, OperationType.DELETE, `users/${currentLoggedInUserEmail}`);
     }
   });
 
@@ -593,7 +595,11 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
         });
 
       } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, "challenges");
+        try {
+          handleFirestoreError(error, OperationType.WRITE, "challenges");
+        } catch (e) {
+          console.error("Failed to persist challenge submission in background:", e);
+        }
       }
     }
 
@@ -623,8 +629,7 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
       });
       res.json(history);
     } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, "challenges");
-      res.status(500).json({ error: "Internal Server Error" });
+      respondWithFirestoreError(res, error, OperationType.LIST, "challenges");
     }
   });
 
@@ -646,8 +651,7 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
 
       res.status(404).json({ error: "Challenge history element not found" });
     } catch (error) {
-      handleFirestoreError(error, OperationType.GET, `challenges/${req.params.id}`);
-      res.status(500).json({ error: "Internal Server Error" });
+      respondWithFirestoreError(res, error, OperationType.GET, `challenges/${req.params.id}`);
     }
   });
 
@@ -696,8 +700,7 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
       await setDoc(doc(db, "duels", duelId), lobby);
       res.json(lobby);
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, "duels");
-      res.status(500).json({ error: "Internal Server Error" });
+      respondWithFirestoreError(res, error, OperationType.WRITE, "duels");
     }
   });
 
@@ -741,8 +744,7 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
       await setDoc(doc(db, "duels", matchData.id), matchData);
       res.json(matchData);
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, "duels");
-      res.status(500).json({ error: "Internal Server Error" });
+      respondWithFirestoreError(res, error, OperationType.WRITE, "duels");
     }
   });
 
@@ -757,8 +759,7 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
       }
       res.json(querySnap.docs[0].data());
     } catch (error) {
-      handleFirestoreError(error, OperationType.GET, "duels");
-      res.status(500).json({ error: "Internal Server Error" });
+      respondWithFirestoreError(res, error, OperationType.GET, "duels");
     }
   });
 

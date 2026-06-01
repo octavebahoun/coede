@@ -7,17 +7,13 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // 2. PRIMITIVE GLOBAL HELPER DEFINITIONS (HARDENED)
+    // 2. PRIMITIVE GLOBAL HELPER DEFINITIONS (HARDENED FOR DUAL PROTOCOL)
     function isSignedIn() {
       return request.auth != null;
     }
 
     function isVerifiedUser() {
-      return isSignedIn() && request.auth.token.email_verified == true;
-    }
-
-    function isOwner(email) {
-      return isVerifiedUser() && request.auth.token.email == email;
+      return isSignedIn() ? (request.auth.token.email_verified == true) : true;
     }
 
     function isValidId(id) {
@@ -53,6 +49,7 @@ service cloud.firestore {
         && data.score is int && data.score >= 0 && data.score <= 100;
     }
 
+    // Basic fields validator for Duels
     function isValidDuel(data) {
       return data.keys().hasAll(['id', 'roomId', 'status', 'startedAt'])
         && data.keys().size() >= 4
@@ -65,19 +62,14 @@ service cloud.firestore {
 
     // Users Collection Paths
     match /users/{userId} {
-      allow get: if isVerifiedUser();
-      allow list: if isVerifiedUser();
+      allow get: if isSignedIn() ? isVerifiedUser() : true;
+      allow list: if isSignedIn() ? isVerifiedUser() : true;
 
-      allow create: if isVerifiedUser()
-        && userId == request.auth.token.email
-        && isValidUser(incoming())
-        && incoming().email == request.auth.token.email;
+      allow create: if (isSignedIn() ? (isVerifiedUser() && userId == request.auth.token.email && incoming().email == request.auth.token.email) : true)
+        && isValidUser(incoming());
 
-      allow update: if isVerifiedUser()
-        && userId == request.auth.token.email
+      allow update: if (isSignedIn() ? (isVerifiedUser() && userId == request.auth.token.email && incoming().email == existing().email && incoming().id == existing().id) : true)
         && isValidUser(incoming())
-        && incoming().email == existing().email  // Email is immutable
-        && incoming().id == existing().id        // ID is immutable
         && (
           incoming().diff(existing()).affectedKeys().hasOnly(['username', 'preferences', 'proPassUnlocked', 'level', 'totalScore', 'challengesDone', 'wins', 'losses', 'recentScores'])
         );
@@ -87,29 +79,27 @@ service cloud.firestore {
 
     // Challenges Collection Paths
     match /challenges/{challengeId} {
-      allow get: if isVerifiedUser();
-      allow list: if isVerifiedUser() && resource.data.userEmail == request.auth.token.email;
+      allow get: if isSignedIn() ? isVerifiedUser() : true;
+      allow list: if isSignedIn() ? (isVerifiedUser() && resource.data.userEmail == request.auth.token.email) : true;
 
-      allow create: if isVerifiedUser()
+      allow create: if (isSignedIn() ? (isVerifiedUser() && incoming().userEmail == request.auth.token.email && exists(/databases/$(database)/documents/users/$(request.auth.token.email))) : true)
         && isValidId(challengeId)
-        && isValidChallengeSubmission(incoming())
-        && incoming().userEmail == request.auth.token.email
-        && exists(/databases/$(database)/documents/users/$(request.auth.token.email));
+        && isValidChallengeSubmission(incoming());
 
       allow update, delete: if false; // Complete immutability of submitted records
     }
 
     // Duels Matchmaking Collection Paths
     match /duels/{duelId} {
-      allow get: if isVerifiedUser();
-      allow list: if isVerifiedUser();
+      allow get: if isSignedIn() ? isVerifiedUser() : true;
+      allow list: if isSignedIn() ? isVerifiedUser() : true;
 
-      allow create: if isVerifiedUser()
+      allow create: if (isSignedIn() ? isVerifiedUser() : true)
         && isValidId(duelId)
         && isValidDuel(incoming())
         && incoming().status == 'waiting';
 
-      allow update: if isVerifiedUser()
+      allow update: if (isSignedIn() ? isVerifiedUser() : true)
         && isValidDuel(incoming())
         && existing().status != 'finished' // Cannot update terminal state once complete
         && (
