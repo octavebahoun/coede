@@ -12,11 +12,7 @@ export default function Header({ onSearchChange, onGoProClick, openSettings, pro
   const [searchValue, setSearchValue] = useState("");
   const [showNotificationModal, setShowNotificationModal] = useState(false);
 
-  const notifications = [
-    { id: 1, text: "Félicitations ! Votre code pour 'Neural Pathfinding' a dépassé 94% d'efficacité.", type: "success", time: "Il y a 2h" },
-    { id: 2, text: "Nouveau défi disponible : Token Context Expansion (Niveau Avancé).", type: "info", time: "Il y a 5h" },
-    { id: 3, text: "La saison 12 d'arène de duels commence bientôt ! Préparez vos algorithmes.", type: "warning", time: "Hier" }
-  ];
+  const notifications: any[] = [];
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -80,7 +76,9 @@ export default function Header({ onSearchChange, onGoProClick, openSettings, pro
           className="text-zinc-400 hover:text-white hover:bg-zinc-800/40 w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer relative"
         >
           <Bell className="w-4.5 h-4.5" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+          {notifications.length > 0 && (
+            <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+          )}
         </button>
 
         {/* Settings button */}
@@ -118,12 +116,16 @@ export default function Header({ onSearchChange, onGoProClick, openSettings, pro
               </button>
             </div>
             <div className="flex flex-col gap-2.5 max-h-64 overflow-y-auto">
-              {notifications.map((notif) => (
-                <div key={notif.id} className="p-2.5 rounded-lg bg-[#09090b] border border-[#27272a] text-xs">
-                  <p className="text-zinc-200 leading-relaxed">{notif.text}</p>
-                  <span className="text-[10px] text-zinc-500 mt-1 block">{notif.time}</span>
-                </div>
-              ))}
+              {notifications.length === 0 ? (
+                <p className="text-xs text-zinc-500 text-center py-4 italic">Aucune nouvelle notification</p>
+              ) : (
+                notifications.map((notif) => (
+                  <div key={notif.id} className="p-2.5 rounded-lg bg-[#09090b] border border-[#27272a] text-xs">
+                    <p className="text-zinc-200 leading-relaxed">{notif.text}</p>
+                    <span className="text-[10px] text-zinc-500 mt-1 block">{notif.time}</span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}

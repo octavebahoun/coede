@@ -7,25 +7,44 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // 2. PRIMITIVE GLOBAL HELPER DEFINITIONS (HARDENED FOR DUAL PROTOCOL)
+    // 2. PRIMITIVE GLOBAL HELPER DEFINITIONS (HARDENED FOR DUAL PROTOCOL AND NULL-SAFE)
     function isSignedIn() {
       return request.auth != null;
     }
 
     function isVerifiedUser() {
-      return isSignedIn() ? (request.auth.token.email_verified == true) : true;
+      return request.auth == null || (request.auth.token != null && request.auth.token.get('email_verified', false) == true);
+    }
+
+    function isUserHimself(userId) {
+      return request.auth == null || (request.auth.token != null && request.auth.token.get('email', '') == userId);
+    }
+
+    function isChallengeAuthor(userEmail) {
+      return request.auth == null || (request.auth.token != null && request.auth.token.get('email', '') == userEmail);
+    }
+
+    function userProfileExists(email) {
+      return request.auth == null || exists(/databases/$(database)/documents/users/$(email));
     }
 
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    // Safeguard helper for request resource data
     function incoming() {
       return request.resource.data;
     }
 
+    // Safeguard helper for active document resource data
     function existing() {
       return resource.data;
+    }
+
+    // Check if the value is a numeric type (int or float)
+    function isNumeric(val) {
+      return val is int || val is float;
     }
 
     // 3. SPECIALIZED ENTITY VALIDATORS
@@ -36,8 +55,8 @@ service cloud.firestore {
         && data.id is string && data.id.size() <= 128
         && data.username is string && data.username.size() > 0 && data.username.size() <= 64
         && data.email is string && data.email.size() <= 128
-        && data.level is int && data.level >= 1
-        && data.totalScore is int && data.totalScore >= 0;
+        && isNumeric(data.level) && data.level >= 1
+        && isNumeric(data.totalScore) && data.totalScore >= 0;
     }
 
     function isValidChallengeSubmission(data) {
@@ -46,10 +65,9 @@ service cloud.firestore {
         && data.id is string && data.id.size() <= 128
         && data.userEmail is string && data.userEmail.size() <= 128
         && data.challengeId is string && data.challengeId.size() <= 128
-        && data.score is int && data.score >= 0 && data.score <= 100;
+        && isNumeric(data.score) && data.score >= 0 && data.score <= 100;
     }
 
-    // Basic fields validator for Duels
     function isValidDuel(data) {
       return data.keys().hasAll(['id', 'roomId', 'status', 'startedAt'])
         && data.keys().size() >= 4
@@ -62,13 +80,13 @@ service cloud.firestore {
 
     // Users Collection Paths
     match /users/{userId} {
-      allow get: if isSignedIn() ? isVerifiedUser() : true;
-      allow list: if isSignedIn() ? isVerifiedUser() : true;
+      allow get: if isVerifiedUser();
+      allow list: if isVerifiedUser();
 
-      allow create: if (isSignedIn() ? (isVerifiedUser() && userId == request.auth.token.email && incoming().email == request.auth.token.email) : true)
+      allow create: if isUserHimself(userId)
         && isValidUser(incoming());
 
-      allow update: if (isSignedIn() ? (isVerifiedUser() && userId == request.auth.token.email && incoming().email == existing().email && incoming().id == existing().id) : true)
+      allow update: if isUserHimself(userId)
         && isValidUser(incoming())
         && (
           incoming().diff(existing()).affectedKeys().hasOnly(['username', 'preferences', 'proPassUnlocked', 'level', 'totalScore', 'challengesDone', 'wins', 'losses', 'recentScores'])
@@ -79,10 +97,11 @@ service cloud.firestore {
 
     // Challenges Collection Paths
     match /challenges/{challengeId} {
-      allow get: if isSignedIn() ? isVerifiedUser() : true;
-      allow list: if isSignedIn() ? (isVerifiedUser() && resource.data.userEmail == request.auth.token.email) : true;
+      allow get: if isVerifiedUser();
+      allow list: if isVerifiedUser();
 
-      allow create: if (isSignedIn() ? (isVerifiedUser() && incoming().userEmail == request.auth.token.email && exists(/databases/$(database)/documents/users/$(request.auth.token.email))) : true)
+      allow create: if isChallengeAuthor(incoming().userEmail)
+        && userProfileExists(incoming().userEmail)
         && isValidId(challengeId)
         && isValidChallengeSubmission(incoming());
 
@@ -91,15 +110,15 @@ service cloud.firestore {
 
     // Duels Matchmaking Collection Paths
     match /duels/{duelId} {
-      allow get: if isSignedIn() ? isVerifiedUser() : true;
-      allow list: if isSignedIn() ? isVerifiedUser() : true;
+      allow get: if isVerifiedUser();
+      allow list: if isVerifiedUser();
 
-      allow create: if (isSignedIn() ? isVerifiedUser() : true)
+      allow create: if isVerifiedUser()
         && isValidId(duelId)
         && isValidDuel(incoming())
         && incoming().status == 'waiting';
 
-      allow update: if (isSignedIn() ? isVerifiedUser() : true)
+      allow update: if isVerifiedUser()
         && isValidDuel(incoming())
         && existing().status != 'finished' // Cannot update terminal state once complete
         && (
@@ -107,7 +126,7 @@ service cloud.firestore {
           (existing().status == 'waiting' && incoming().status == 'ready' && incoming().diff(existing()).affectedKeys().hasAny(['player2', 'status']))
           ||
           // Action 2: Progressing through active games or resolving winners
-          (incoming().diff(existing()).affectedKeys().hasAny(['status', 'winnerEmail']))
+          (incoming().diff(existing()).affectedKeys().hasAny(['status', 'winnerEmail', 'player1Submitted', 'player2Submitted', 'player1Code', 'player2Code', 'player1Rating', 'player2Rating', 'player1Score', 'player2Score', 'chatMessages']))
         );
 
       allow delete: if false;

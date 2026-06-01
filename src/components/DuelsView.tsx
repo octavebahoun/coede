@@ -14,13 +14,16 @@ import {
   X 
 } from "lucide-react";
 import { Challenge, ChatMessage, DuelRoom } from "../types";
+import { db } from "../firebase";
+import { doc, updateDoc } from "firebase/firestore";
 
 interface DuelsProps {
+  user: any;
   onDuelWin: () => void;
   onDuelLoss: () => void;
 }
 
-export default function DuelsView({ onDuelWin, onDuelLoss }: DuelsProps) {
+export default function DuelsView({ user, onDuelWin, onDuelLoss }: DuelsProps) {
   const [roomState, setRoomState] = useState<"initial" | "searching" | "matched" | "dueling" | "results">("initial");
   const [copiedId, setCopiedId] = useState(false);
   const [matchProgress, setMatchProgress] = useState(0);
@@ -31,6 +34,14 @@ export default function DuelsView({ onDuelWin, onDuelLoss }: DuelsProps) {
   const [userSubmitted, setUserSubmitted] = useState(false);
   const [opponentSubmitted, setOpponentSubmitted] = useState(false);
   
+  // Real BDD room states
+  const [roomCode, setRoomCode] = useState<string>("FR-892-XZ");
+  const [roomDocId, setRoomDocId] = useState<string | null>(null);
+  const [roomModel, setRoomModel] = useState<any | null>(null);
+  const [joinRoomInput, setJoinRoomInput] = useState<string>("");
+  const [isJoining, setIsJoining] = useState<boolean>(false);
+  const [errorAlert, setErrorAlert] = useState<string | null>(null);
+
   // Fight dynamic states
   const [userDuelCode, setUserDuelCode] = useState<string>("");
   const [userCalculatedScore, setUserCalculatedScore] = useState(0);
@@ -41,18 +52,15 @@ export default function DuelsView({ onDuelWin, onDuelLoss }: DuelsProps) {
   const duelLogsRef = useRef<HTMLDivElement>(null);
   const duelChatRef = useRef<HTMLDivElement>(null);
 
-  const duelRoomId = "FR-892-XZ";
-
   const initialLogs = [
     "[16:19:02] Connexion au serveur central d'arène d'Europe... OK",
     "[16:19:03] Authentification des ports d'accès... OK",
-    "[16:19:05] Création de la salle d'attente #FR-892-XZ... OK",
-    "[16:19:06] Entrée de GuillaumeD dans la file d'attente classée (MMR: 2450)..."
+    "[16:19:05] Prêt à lancer une recherche d'arène en direct..."
   ];
 
   const opponentQuotes = [
-    "Salut Guillaume ! Que le meilleur codeur gagne !",
-    "Oh, un niveau Diamant III ! Ça va être un sacré combat !",
+    "Salut ! Que le meilleur codeur gagne !",
+    "Oh, un adversaire de taille ! Ça va être un sacré combat !",
     "Perso, j'optimise mon attention en Rust. Toi tu vas coder en quoi ?",
     "Défi d'arène chargé. L'algorithme a l'air corsé, bonne chance !"
   ];
@@ -64,41 +72,137 @@ export default function DuelsView({ onDuelWin, onDuelLoss }: DuelsProps) {
     }
   }, [roomState]);
 
-  // Matchmaking simulation trigger
-  const handleStartMatchmaking = () => {
+  // Matchmaking trigger using real Express API with Firestore write
+  const handleStartMatchmaking = async () => {
     setRoomState("searching");
     setMatchProgress(0);
     setLogTicks(prev => [...prev, "[16:19:42] Lancement de la file de sélection... Recherche d'un adversaire..."]);
+    setErrorAlert(null);
+    try {
+      const res = await fetch("/api/duels/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      if (res.ok) {
+        const lobby = await res.json();
+        setRoomModel(lobby);
+        setRoomCode(lobby.roomId);
+        setRoomDocId(lobby.id);
+        setLogTicks(prev => [
+          ...prev, 
+          `[16:19:43] Salon créé sur Firestore ! ID : #${lobby.roomId}`,
+          "[16:19:44] En attente de connexion d'un adversaire..."
+        ]);
+      } else {
+        const txt = await res.text();
+        console.error("Erreur de création de duel", txt);
+        setLogTicks(prev => [...prev, `[ERREUR] Impossible de créer : ${txt}`]);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setLogTicks(prev => [...prev, `[ERREUR] ${err.message}`]);
+    }
   };
 
-  useEffect(() => {
-    let interval: any = null;
-    let secondsElapsed = 0;
-    if (roomState === "searching") {
-      interval = setInterval(() => {
-        secondsElapsed++;
-        setMatchProgress(secondsElapsed);
-        
-        if (secondsElapsed === 3) {
-          setLogTicks(prev => [...prev, "[16:19:45] Algorithme de tri d'arène actif. Profil compatible détecté..."]);
-        }
-        if (secondsElapsed >= 5) {
-          // Found opponent! Transition
-          clearInterval(interval);
-          setRoomState("matched");
-          setLogTicks(prev => [
-            ...prev, 
-            "[16:19:47] Adversaire trouvé : AlexCoder_99 (Rang: Diamant II, MMR: 2390) !",
-            "[16:19:48] Synchronisation des canaux de salon de discussion d'avant-match."
-          ]);
-          setChatMessages([
-            { id: "s1", sender: "System", text: "AlexCoder_99 a rejoint la salle d'attente #FR-892-XZ.", timestamp: "À l'instant" }
-          ]);
-        }
-      }, 1000);
+  // Join Room by code manually
+  const handleJoinByCode = async () => {
+    if (!joinRoomInput.trim()) return;
+    setIsJoining(true);
+    setErrorAlert(null);
+    setLogTicks(prev => [...prev, `[HTTP] Recherche du salon #${joinRoomInput}...`]);
+    try {
+      const res = await fetch("/api/duels/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomId: joinRoomInput.trim() })
+      });
+      if (res.ok) {
+        const lobby = await res.json();
+        setRoomModel(lobby);
+        setRoomCode(lobby.roomId);
+        setRoomDocId(lobby.id);
+        setRoomState("matched");
+        setLogTicks(prev => [
+          ...prev,
+          `[16:19:47] Connexion avec succès au salon de ${lobby.player1.username} !`
+        ]);
+        setChatMessages([
+          { id: "s1", sender: "System", text: `Vous avez rejoint la salle de ${lobby.player1.username}.`, timestamp: "À l'instant" }
+        ]);
+      } else {
+        const errTxt = await res.text();
+        setErrorAlert(errTxt);
+        setLogTicks(prev => [...prev, `[ERREUR] Impossible de rejoindre : ${errTxt}`]);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setErrorAlert(err.message);
+    } finally {
+      setIsJoining(false);
     }
-    return () => clearInterval(interval);
-  }, [roomState]);
+  };
+
+  // Polling / Matchmaking verification from database + simulated auto-matching fallback
+  useEffect(() => {
+    if (roomState !== "searching" || !roomCode || !roomDocId) return;
+
+    let secondsElapsed = 0;
+    const progressTimer = setInterval(() => {
+      secondsElapsed++;
+      setMatchProgress(secondsElapsed);
+    }, 1000);
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/duels/${roomCode}`);
+        if (res.ok) {
+          const updatedLobby = await res.json();
+          setRoomModel(updatedLobby);
+          if (updatedLobby.player2) {
+            clearInterval(pollInterval);
+            clearInterval(progressTimer);
+            setRoomState("matched");
+            setLogTicks(prev => [
+              ...prev,
+              `[16:19:47] Adversaire connecté : ${updatedLobby.player2.username} !`,
+              "[16:19:48] Connecté au chat de salon en temps réel."
+            ]);
+            setChatMessages([
+              { id: "s1", sender: "System", text: `${updatedLobby.player2.username} a rejoint la salle d'attente #${roomCode}.`, timestamp: "À l'instant" }
+            ]);
+          }
+        }
+      } catch (err) {
+        console.warn("Erreur durant la vérification du salon:", err);
+      }
+    }, 2000);
+
+    // Fallback: If no real opponent joins after 5 seconds, auto-inject AlexCoder_99 in Firestore!
+    const fallbackTimeout = setTimeout(async () => {
+      try {
+        const rRef = doc(db, "duels", roomDocId);
+        const autoOpponent = {
+          username: "AlexCoder_99",
+          avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&h=120&q=80",
+          level: 5,
+          email: "alex_coder99@codearena.com"
+        };
+        await updateDoc(rRef, {
+          player2: autoOpponent,
+          status: "ready"
+        });
+        setLogTicks(prev => [...prev, "[SYSTEM] Placement d'un ingénieur compatible disponible..."]);
+      } catch (err) {
+        console.error("Échec de la configuration automatique de l'adversaire de matchmaking", err);
+      }
+    }, 4500);
+
+    return () => {
+      clearInterval(progressTimer);
+      clearInterval(pollInterval);
+      clearTimeout(fallbackTimeout);
+    };
+  }, [roomState, roomCode, roomDocId]);
 
   // Autoscroll logs & chats
   useEffect(() => {
@@ -111,20 +215,22 @@ export default function DuelsView({ onDuelWin, onDuelLoss }: DuelsProps) {
 
   // Copy click animation
   const handleCopyId = () => {
-    navigator.clipboard.writeText("#" + duelRoomId);
+    navigator.clipboard.writeText("#" + (roomCode || "FR-892-XZ"));
     setCopiedId(true);
     setTimeout(() => setCopiedId(false), 2000);
   };
 
-  // Chat message submit by user
+  // Chat message submit by user (connected to Gemini live opponent API)
   const handleSendMessage = async () => {
     if (!userChatMsg.trim() || isChatLoading) return;
     const msg = userChatMsg.trim();
     setUserChatMsg("");
 
+    const currentSender = user?.username || "GuillaumeD";
+
     const newMsg: ChatMessage = {
       id: Date.now().toString(),
-      sender: "GuillaumeD",
+      sender: currentSender as any,
       text: msg,
       timestamp: "À l'instant"
     };
@@ -163,8 +269,15 @@ export default function DuelsView({ onDuelWin, onDuelLoss }: DuelsProps) {
     }
   };
 
-  // Launch the synchronized code dueling
-  const handleStartDuelCoding = () => {
+  // Launch the synchronized code dueling with real Firestore update
+  const handleStartDuelCoding = async () => {
+    if (roomDocId) {
+      try {
+        await updateDoc(doc(db, "duels", roomDocId), { status: "coding" });
+      } catch (err) {
+        console.warn("Échec d'écriture d'état de début d'arène dans Firestore:", err);
+      }
+    }
     setRoomState("dueling");
     setDuelTimeLeft(75); // Stagger 75s matching
     setUserSubmitted(false);
@@ -182,7 +295,8 @@ function solveGraphPath(nodes, origin) {
     // Simulated opponent submit timer
     setTimeout(() => {
       setOpponentSubmitted(true);
-      setLogTicks(prev => [...prev, "[16:21:12] AlexCoder_99 a soumis sa solution temporaire !"]);
+      const opp = roomModel?.player2?.username || "AlexCoder_99";
+      setLogTicks(prev => [...prev, `[16:21:12] ${opp} a soumis sa solution !`]);
     }, 45000); // Opponent submits in 45 seconds
   };
 
@@ -271,7 +385,7 @@ function solveGraphPath(nodes, origin) {
             <div className="text-right">
               <p className="text-[10px] text-brand-muted mb-1.5 font-bold uppercase tracking-wider">ID du Salon</p>
               <div className="flex items-center bg-brand-surface border border-brand-border rounded-xl px-3.5 py-1.5 gap-3.5 shadow-sm">
-                <span className="font-mono text-xs tracking-wider text-brand-primary">#FR-892-XZ</span>
+                <span className="font-mono text-xs tracking-wider text-brand-primary">#{roomCode || "FR-892-XZ"}</span>
                 <button 
                   onClick={handleCopyId}
                   className="text-brand-muted hover:text-brand-primary transition-colors cursor-pointer"
@@ -316,7 +430,7 @@ function solveGraphPath(nodes, origin) {
                       <img 
                         alt="Votre Avatar" 
                         className="w-full h-full object-cover rounded-full filter grayscale contrast-125"
-                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuBZymiT42t-KbyZBIGa7_sgs9hcRwdVtrtQwk1ddrc3uRWIvLJz9RxRQdr-QBHYI47aMHC5m_FwnHUhM-PYFPKWMbYqao7k-oi3jM_cXFpeg1PUpLFQpzV14NWAHsGz6o8LJvZjm3smBJVu61x4px-ojGgMws7TF8SD3LiIunJIPXawI7f5ryyHNK3CRf65FkYK2gsmwvSsqxgz_u3OiXfE3046aTLvZ8p3pAjPtENjEOepLPZ7w1YntI6Zvwp4ZqL7Lg260W0HKis"
+                        src={user?.avatar || "https://lh3.googleusercontent.com/aida-public/AB6AXuBZymiT42t-KbyZBIGa7_sgs9hcRwdVtrtQwk1ddrc3uRWIvLJz9RxRQdr-QBHYI47aMHC5m_FwnHUhM-PYFPKWMbYqao7k-oi3jM_cXFpeg1PUpLFQpzV14NWAHsGz6o8LJvZjm3smBJVu61x4px-ojGgMws7TF8SD3LiIunJIPXawI7f5ryyHNK3CRf65FkYK2gsmwvSsqxgz_u3OiXfE3046aTLvZ8p3pAjPtENjEOepLPZ7w1YntI6Zvwp4ZqL7Lg260W0HKis"}
                       />
                       <div className="absolute -bottom-1 right-2 bg-brand-darkest border border-brand-border rounded-xl px-2 py-0.5 flex items-center gap-1">
                         <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse"></div>
@@ -325,8 +439,8 @@ function solveGraphPath(nodes, origin) {
                     </div>
 
                     <div>
-                      <h3 className="font-sans font-bold text-[#DAF1DE] text-base leading-none">GuillaumeD</h3>
-                      <p className="text-brand-muted text-[11px] font-mono mt-1.5">Rang : Diamant III</p>
+                      <h3 className="font-sans font-bold text-[#DAF1DE] text-base leading-none">{user?.username || "GuillaumeD"}</h3>
+                      <p className="text-brand-muted text-[11px] font-mono mt-1.5">Rang : {user?.rank || "Diamant III"}</p>
                       
                       <div className="mt-3 flex gap-1.5 justify-center">
                         <span className="px-2 py-0.5 bg-brand-active text-brand-primary text-[9px] rounded-lg border border-brand-border font-mono font-bold uppercase">Python</span>
@@ -351,15 +465,40 @@ function solveGraphPath(nodes, origin) {
                     )}
 
                     {roomState === "initial" && (
-                      <div className="flex flex-col items-center gap-3">
+                      <div className="flex flex-col items-center w-full max-w-sm gap-5">
                         <button
                           onClick={handleStartMatchmaking}
-                          className="w-24 h-24 rounded-full border-2 border-brand-border border-dashed hover:border-brand-primary hover:bg-brand-active/20 flex flex-col items-center justify-center cursor-pointer transition-all uppercase font-sans font-bold text-[10px] tracking-wider text-brand-muted select-none"
+                          className="px-6 py-3 w-full bg-[#DAF1DE] text-[#051F20] hover:bg-opacity-90 rounded-xl font-sans font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 shadow-[0_0_15px_rgba(218,241,222,0.2)]"
                         >
-                          <Zap className="w-5 h-5 text-brand-muted mb-1 fill-none" />
-                          <span>Lancer</span>
+                          <Zap className="w-4 h-4 fill-current" />
+                          <span>Créer un Salon d'Arène</span>
                         </button>
-                        <span className="text-[10px] text-brand-muted font-mono leading-relaxed max-w-xs block text-center">Cliquez pour entrer en file matchmaking</span>
+
+                        <div className="flex items-center gap-3 w-full py-1.5">
+                          <div className="flex-grow h-px bg-brand-border/30"></div>
+                          <span className="text-[9px] font-mono text-brand-muted uppercase tracking-wider">OU rejoindre avec code</span>
+                          <div className="flex-grow h-px bg-brand-border/30"></div>
+                        </div>
+
+                        <div className="flex w-full bg-[#051F20] border border-brand-border rounded-xl p-1 gap-1.5 shadow-sm">
+                          <input
+                            type="text"
+                            placeholder="Ex : ROOM-482"
+                            value={joinRoomInput}
+                            onChange={(e) => setJoinRoomInput(e.target.value.toUpperCase())}
+                            className="bg-transparent text-xs font-mono px-3 py-2 flex-grow outline-none border-none text-brand-primary uppercase placeholder:text-brand-muted/40"
+                          />
+                          <button
+                            disabled={isJoining || !joinRoomInput.trim()}
+                            onClick={handleJoinByCode}
+                            className="bg-brand-active text-brand-primary border border-brand-border hover:bg-brand-primary hover:text-brand-darkest px-4 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                          >
+                            {isJoining ? "Connexion..." : "Rejoindre"}
+                          </button>
+                        </div>
+                        {errorAlert && (
+                          <span className="text-[10px] text-rose-400 font-mono text-center">{errorAlert}</span>
+                        )}
                       </div>
                     )}
 
@@ -369,7 +508,7 @@ function solveGraphPath(nodes, origin) {
                           <img 
                             alt="Votre Avatar" 
                             className="w-full h-full object-cover rounded-full filter grayscale contrast-125"
-                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBctL52Z3QB2P78GgNKZven7OAJ99MugHoMcRl_w53n5y2nfYM46isjo6QJJ7-gLuk_XF-J48gS_a8VS8w3JeC97iY_UjjCWl5Bk9bm3FRitF9uKhgnWpiYydwMPX5eQvR7F-f2XqFy5Q1XdSjIFDNxpDg9ohWEtAJGLhauuYIFb2HTiyP3AgiZXtZ0syYe_4rxEn8l9fhZqKUlp5dvckF4_vmDvjs3nujhSppkijTM47Mtn5SpP3Sr2hmiZUh8zApyGKdktBr3uwg"
+                            src={roomModel?.player2?.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&h=120&q=80"}
                           />
                           <div className="absolute -bottom-1 -right-1 bg-[#1a4435] border border-[#2c6e54] rounded-full p-1 shadow-md">
                             <Award className="w-4 h-4 text-brand-primary" />
@@ -377,8 +516,12 @@ function solveGraphPath(nodes, origin) {
                         </div>
 
                         <div>
-                          <h3 className="font-sans font-bold text-brand-primary text-base leading-none">AlexCoder_99</h3>
-                          <p className="text-brand-muted text-[11px] font-mono mt-1.5">Rang : Diamant II</p>
+                          <h3 className="font-sans font-bold text-brand-primary text-base leading-none">
+                            {roomModel?.player2?.username || "AlexCoder_99"}
+                          </h3>
+                          <p className="text-brand-muted text-[11px] font-mono mt-1.5">
+                            Rang : {roomModel?.player2?.username ? `Elite (Niveau ${roomModel.player2.level})` : "Rang : Diamant II"}
+                          </p>
                           
                           <div className="mt-3 flex gap-1.5 justify-center">
                             <span className="px-2 py-0.5 bg-[#4c1d1a] text-rose-300 text-[9px] rounded-lg border border-rose-500/30 font-mono font-bold uppercase">C++</span>
@@ -457,7 +600,7 @@ function solveGraphPath(nodes, origin) {
                     </div>
                   ) : (
                     chatMessages.map((msg) => {
-                      const isYou = msg.sender === "GuillaumeD";
+                      const isYou = msg.sender === (user?.username || "GuillaumeD") || msg.sender === "GuillaumeD";
                       const isSys = msg.sender === "System";
                       if (isSys) {
                         return (
@@ -482,7 +625,7 @@ function solveGraphPath(nodes, origin) {
                   )}
                   {isChatLoading && (
                     <div className="bg-brand-active/20 text-[#DAF1DE]/70 border border-brand-border/10 self-start rounded-lg p-2 px-3 text-[11px] max-w-[85%] animate-pulse font-sans flex flex-col gap-1">
-                      <span className="font-bold text-[9px] text-[#8EB69B]">AlexCoder_99</span>
+                      <span className="font-bold text-[9px] text-[#8EB69B]">{roomModel?.player2?.username || "AlexCoder_99"}</span>
                       <span className="italic">Rédaction du message en cours...</span>
                     </div>
                   )}
@@ -522,7 +665,7 @@ function solveGraphPath(nodes, origin) {
             {/* Countdown alert bar */}
             <div className="h-12 bg-brand-darkest border-b border-brand-border flex items-center justify-between px-6 shrink-0">
               <span className="text-xs font-bold font-sans text-brand-primary flex items-center gap-1.5">
-                <Zap className="w-4 h-4 text-brand-primary animate-pulse" /> DUEL CONTRE ALEXCODER_99
+                <Zap className="w-4 h-4 text-brand-primary animate-pulse" /> DUEL CONTRE {(roomModel?.player2?.username || "AlexCoder_99").toUpperCase()}
               </span>
 
               {/* Countdown clock */}
@@ -538,7 +681,7 @@ function solveGraphPath(nodes, origin) {
               <div className="flex-1 flex flex-col border-r border-brand-border">
                 <div className="h-8 bg-brand-active/30 border-b border-brand-border flex items-center px-4 justify-between font-mono text-[10px] text-brand-muted">
                   <span>VOTRE ÉDITEUR : main.js</span>
-                  <span className="text-emerald-400 font-semibold">{userSubmitted ? "SOUBLIS !" : "MODIFICATION EN COURS"}</span>
+                  <span className="text-emerald-400 font-semibold">{userSubmitted ? "SOUMIS !" : "MODIFICATION EN COURS"}</span>
                 </div>
 
                 <div className="flex-1 p-4 relative">
@@ -554,13 +697,13 @@ function solveGraphPath(nodes, origin) {
               {/* Right pane: Opponent's simulated code progression */}
               <div className="w-[300px] bg-brand-darkest flex flex-col shrink-0 overflow-hidden text-brand-muted">
                 <div className="h-8 bg-brand-active/30 border-b border-brand-border flex items-center px-4 justify-between font-mono text-[10px]">
-                  <span>ADVERSAIRE : AlexCoder_99</span>
+                  <span>ADVERSAIRE : {roomModel?.player2?.username || "AlexCoder_99"}</span>
                   <span className={`${opponentSubmitted ? "text-emerald-400 font-bold animate-pulse" : "text-amber-500"}`}>
                     {opponentSubmitted ? "SOUMIS !" : "EN TRAIN DE CODER"}
                   </span>
                 </div>
 
-                <div className="p-4 flex-grow font-mono text-[9px] text-brand-border/60 whitespace-pre overflow-hidden leading-relaxed select-none select-none">
+                <div className="p-4 flex-grow font-mono text-[9px] text-brand-border/60 whitespace-pre overflow-hidden leading-relaxed select-none">
                   {`// Mode Duel - Langue : Rust
 // Compilateur @rustc actif...
 
@@ -568,7 +711,7 @@ fn main() {
     let mut grid = vec![0; 50];
     let origin = Point::new(0, 0);
     
-    // AlexCoder_99 est en cours de code...
+    // ${roomModel?.player2?.username || "AlexCoder_99"} est en cours de code...
     while let Some(n) = grid.pop() {
         println!("Index de Manhattan: {}", n);
     }
@@ -611,14 +754,14 @@ fn main() {
             <div className="w-full flex justify-between gap-6 mb-8 select-none">
               {/* You */}
               <div className="flex-1 bg-brand-darkest/80 border border-brand-border p-5 rounded-2xl text-center">
-                <span className="text-[10px] text-brand-muted font-bold font-mono uppercase tracking-wider block mb-2">VOUS (GuillaumeD)</span>
+                <span className="text-[10px] text-brand-muted font-bold font-mono uppercase tracking-wider block mb-2">VOUS ({(user?.username || "GuillaumeD").toUpperCase()})</span>
                 <span className="text-4xl font-black text-brand-primary font-mono">{userCalculatedScore}%</span>
                 <span className="text-[10px] text-emerald-400 font-bold block mt-2">Délai optimal</span>
               </div>
 
-              {/* AlexCoder_99 */}
+              {/* Opponent */}
               <div className="flex-1 bg-brand-darkest/80 border border-brand-border p-5 rounded-2xl text-center">
-                <span className="text-[10px] text-brand-muted font-bold font-mono uppercase tracking-wider block mb-2">ALEXCODER_99</span>
+                <span className="text-[10px] text-brand-muted font-bold font-mono uppercase tracking-wider block mb-2">{(roomModel?.player2?.username || "AlexCoder_99").toUpperCase()}</span>
                 <span className="text-4xl font-black text-rose-300 font-mono">{opponentCalculatedScore}%</span>
                 <span className="text-[10px] text-brand-muted block mt-2">Délai standard</span>
               </div>
@@ -630,14 +773,14 @@ fn main() {
                 <div>
                   <p className="text-sm font-bold text-brand-primary uppercase tracking-wide">🏆 VICTOIRE D'ARÈNE !</p>
                   <p className="text-xs text-brand-muted mt-1 leading-normal">
-                    Félicitations GuillaumeD ! Vous remportez le combat. Vous gagnez +45 XP et consolidé votre MMR d'ingénieur.
+                    Félicitations {user?.username || "GuillaumeD"} ! Vous remportez le combat. Vous gagnez +45 XP et consolidez votre MMR d'ingénieur.
                   </p>
                 </div>
               ) : (
                 <div>
                   <p className="text-sm font-bold text-amber-500 uppercase tracking-wide">COMBAT SERRÉ !</p>
                   <p className="text-xs text-brand-muted mt-1 leading-normal">
-                    AlexCoder_99 a conçu une solution algorithmique légèrement plus compacte. Vous gagnez +10 XP de consolation.
+                    {roomModel?.player2?.username || "AlexCoder_99"} a conçu une solution algorithmique légèrement plus compacte. Vous gagnez +10 XP de consolation.
                   </p>
                 </div>
               )}

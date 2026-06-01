@@ -70,10 +70,12 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Redirection automatique des utilisateurs non connectés vers la landing page sécurisée
+  // Redirection automatique des utilisateurs connectés et de la landing page sécurisée
   useEffect(() => {
     if (!user && currentTab !== "landing") {
       setTab("landing");
+    } else if (user && currentTab === "landing") {
+      setTab("home");
     }
   }, [user, currentTab]);
 
@@ -473,7 +475,7 @@ if __name__ == "__main__":
                 transition={{ duration: 0.18 }}
                 className="flex-1 flex flex-col overflow-hidden"
               >
-                <DuelsView onDuelWin={handleDuelWinner} onDuelLoss={handleDuelLoser} />
+                <DuelsView user={user} onDuelWin={handleDuelWinner} onDuelLoss={handleDuelLoser} />
               </motion.div>
             )}
 
