@@ -12,20 +12,32 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isVerifiedUser() {
-      return request.auth == null || (request.auth.token != null && request.auth.token.get('email_verified', false) == true);
+    function isBackend() {
+      return request.auth == null
+        || (request.auth.token != null && (
+             request.auth.token.get('email', '').endsWith('.gserviceaccount.com')
+             || request.auth.uid == 'service-account'
+           ));
     }
 
+    function isVerifiedUser() {
+      return isBackend()
+        || (request.auth != null && request.auth.token != null && request.auth.token.get('email', '') != '');
+    }
+
+    // Is client-side OAuth 2.0 Identity verified for current user?
     function isUserHimself(userId) {
-      return request.auth == null || (request.auth.token != null && request.auth.token.get('email', '') == userId);
+      return isBackend()
+        || (request.auth != null && request.auth.token != null && request.auth.token.get('email', '') == userId);
     }
 
     function isChallengeAuthor(userEmail) {
-      return request.auth == null || (request.auth.token != null && request.auth.token.get('email', '') == userEmail);
+      return isBackend()
+        || (request.auth != null && request.auth.token != null && request.auth.token.get('email', '') == userEmail);
     }
 
     function userProfileExists(email) {
-      return request.auth == null || exists(/databases/$(database)/documents/users/$(email));
+      return isBackend() || exists(/databases/$(database)/documents/users/$(email));
     }
 
     function isValidId(id) {

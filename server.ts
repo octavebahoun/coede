@@ -27,26 +27,18 @@ function getGemini(): GoogleGenAI {
 }
 
 // ================= FIREBASE FIRESTORE DATABASE INITIALIZATION =================
-import { initializeApp } from "firebase/app";
-import { 
-  getFirestore, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  collection, 
-  query, 
-  where,
-  orderBy
-} from "firebase/firestore";
+import admin from "firebase-admin";
 
 let currentLoggedInUserEmail = "teamexecellence@gmail.com"; // Default premium user matching metadata!
 
 const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf8"));
-const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+
+if (admin.apps.length === 0) {
+  admin.initializeApp({
+    projectId: firebaseConfig.projectId
+  });
+}
+const db = admin.firestore();
 
 enum OperationType {
   CREATE = "create",
@@ -103,7 +95,7 @@ function respondWithFirestoreError(res: any, error: unknown, operationType: Oper
 // Seed function to initialize the CodeArena cloud database with elite starting players
 async function seedDatabaseIfEmpty() {
   try {
-    const usersSnapshot = await getDocs(collection(db, "users"));
+    const usersSnapshot = await db.collection("users").get();
     if (usersSnapshot.empty) {
       console.log("Seeding base database CodeArena on Google Cloud Firestore...");
       
@@ -171,7 +163,7 @@ async function seedDatabaseIfEmpty() {
       ];
 
       for (const u of seedUsers) {
-        await setDoc(doc(db, "users", u.email), u);
+        await db.collection("users").doc(u.email).set(u);
       }
       console.log("Seeding finalized successfully.");
     }
@@ -215,9 +207,9 @@ async function startServer() {
       return res.status(401).json({ error: "Unauthorized" });
     }
     try {
-      const userRef = doc(db, "users", currentLoggedInUserEmail);
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) {
+      const userRef = db.collection("users").doc(currentLoggedInUserEmail);
+      const userSnap = await userRef.get();
+      if (!userSnap.exists) {
         return res.status(401).json({ error: "User not found" });
       }
       res.json(userSnap.data());
@@ -234,11 +226,11 @@ async function startServer() {
     }
 
     try {
-      const userRef = doc(db, "users", email);
-      const userSnap = await getDoc(userRef);
+      const userRef = db.collection("users").doc(email);
+      const userSnap = await userRef.get();
       let userData: any = null;
 
-      if (!userSnap.exists()) {
+      if (!userSnap.exists) {
         userData = {
           id: "user-" + Date.now().toString(36),
           username: username || email.split("@")[0],
@@ -259,7 +251,7 @@ async function startServer() {
           },
           provider: provider || "google"
         };
-        await setDoc(userRef, userData);
+        await userRef.set(userData);
       } else {
         userData = userSnap.data();
       }
@@ -282,7 +274,7 @@ async function startServer() {
   // GET /api/users/leaderboard - Classement global des joueurs
   app.get("/api/users/leaderboard", async (req, res) => {
     try {
-      const usersSnap = await getDocs(collection(db, "users"));
+      const usersSnap = await db.collection("users").get();
       const usersList: any[] = [];
       usersSnap.forEach((doc) => {
         const u = doc.data();
@@ -307,7 +299,7 @@ async function startServer() {
   // GET /api/users/:id - Profil public d'un utilisateur
   app.get("/api/users/:id", async (req, res) => {
     try {
-      const usersSnap = await getDocs(collection(db, "users"));
+      const usersSnap = await db.collection("users").get();
       let user: any = null;
       usersSnap.forEach((doc) => {
         const u = doc.data();
@@ -339,9 +331,9 @@ async function startServer() {
     }
     const body = req.body;
     try {
-      const userRef = doc(db, "users", currentLoggedInUserEmail);
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) {
+      const userRef = db.collection("users").doc(currentLoggedInUserEmail);
+      const userSnap = await userRef.get();
+      if (!userSnap.exists) {
         return res.status(404).json({ error: "User not found" });
       }
 
@@ -359,7 +351,7 @@ async function startServer() {
         recentScores: body.recentScores !== undefined ? body.recentScores : existingUser.recentScores,
       };
 
-      await setDoc(userRef, updatedUser);
+      await userRef.set(updatedUser);
       res.json({ success: true, user: updatedUser });
     } catch (error) {
       respondWithFirestoreError(res, error, OperationType.WRITE, `users/${currentLoggedInUserEmail}`);
@@ -372,8 +364,8 @@ async function startServer() {
       return res.status(401).json({ error: "Unauthorized" });
     }
     try {
-      const userRef = doc(db, "users", currentLoggedInUserEmail);
-      await deleteDoc(userRef);
+      const userRef = db.collection("users").doc(currentLoggedInUserEmail);
+      await userRef.delete();
       currentLoggedInUserEmail = "";
       res.json({ success: true });
     } catch (error) {
@@ -564,10 +556,10 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
     // Save submission to database and update user stats in BDD (Phase V2 requirement!)
     if (currentLoggedInUserEmail) {
       try {
-        const userRef = doc(db, "users", currentLoggedInUserEmail);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          const user = userSnap.data();
+        const userRef = db.collection("users").doc(currentLoggedInUserEmail);
+        const userSnap = await userRef.get();
+        if (userSnap.exists) {
+          const user = userSnap.data() || {};
           user.challengesDone = (user.challengesDone || 0) + 1;
           
           const mainScore = evalOutput.score || 85;
@@ -575,14 +567,14 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
           user.totalScore = (user.totalScore || 0) + mainScore;
           user.level = Math.floor(user.totalScore / 500) + 1;
           
-          await setDoc(userRef, user);
+          await userRef.set(user);
         }
 
         // Add to challenges collection history
         const challengeId = challenge?.id || "custom-challenge";
         const subId = "sub-" + Date.now().toString(36);
-        const challengeRef = doc(db, "challenges", subId);
-        await setDoc(challengeRef, {
+        const challengeRef = db.collection("challenges").doc(subId);
+        await challengeRef.set({
           id: subId,
           userEmail: currentLoggedInUserEmail,
           challengeId: challengeId,
@@ -621,8 +613,7 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
       return res.status(200).json([]); // Tableau vide si non identifié
     }
     try {
-      const q = query(collection(db, "challenges"), where("userEmail", "==", currentLoggedInUserEmail));
-      const querySnap = await getDocs(q);
+      const querySnap = await db.collection("challenges").where("userEmail", "==", currentLoggedInUserEmail).get();
       const history: any[] = [];
       querySnap.forEach((doc) => {
         history.push(doc.data());
@@ -636,15 +627,14 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
   // GET /api/challenges/:id - Détails d'un défi spécifique en BDD
   app.get("/api/challenges/:id", async (req, res) => {
     try {
-      const challengeRef = doc(db, "challenges", req.params.id);
-      const challengeSnap = await getDoc(challengeRef);
-      if (challengeSnap.exists()) {
+      const challengeRef = db.collection("challenges").doc(req.params.id);
+      const challengeSnap = await challengeRef.get();
+      if (challengeSnap.exists) {
         return res.json(challengeSnap.data());
       }
 
       // Fallback search by challengeId field
-      const q = query(collection(db, "challenges"), where("challengeId", "==", req.params.id));
-      const querySnap = await getDocs(q);
+      const querySnap = await db.collection("challenges").where("challengeId", "==", req.params.id).get();
       if (!querySnap.empty) {
         return res.json(querySnap.docs[0].data());
       }
@@ -663,12 +653,12 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
       return res.status(401).json({ error: "Unauthorized" });
     }
     try {
-      const userRef = doc(db, "users", currentLoggedInUserEmail);
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) {
+      const userRef = db.collection("users").doc(currentLoggedInUserEmail);
+      const userSnap = await userRef.get();
+      if (!userSnap.exists) {
         return res.status(404).json({ error: "User profile not found" });
       }
-      const user = userSnap.data();
+      const user = userSnap.data() || {};
 
       const roomId = "ROOM-" + Math.floor(100 + Math.random() * 900).toString();
       const duelId = "duel-" + Date.now().toString(36);
@@ -697,7 +687,7 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
         winnerEmail: null
       };
 
-      await setDoc(doc(db, "duels", duelId), lobby);
+      await db.collection("duels").doc(duelId).set(lobby);
       res.json(lobby);
     } catch (error) {
       respondWithFirestoreError(res, error, OperationType.WRITE, "duels");
@@ -716,8 +706,7 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
 
     try {
       const cleanRoomId = roomId.replace("#", "").trim();
-      const q = query(collection(db, "duels"), where("roomId", "==", cleanRoomId), where("status", "==", "waiting"));
-      const querySnap = await getDocs(q);
+      const querySnap = await db.collection("duels").where("roomId", "==", cleanRoomId).where("status", "==", "waiting").get();
       
       if (querySnap.empty) {
         return res.status(404).json({ error: "Salon introuvable ou déjà complet." });
@@ -726,12 +715,12 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
       const duelDoc = querySnap.docs[0];
       const matchData = duelDoc.data();
 
-      const userRef = doc(db, "users", currentLoggedInUserEmail);
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) {
+      const userRef = db.collection("users").doc(currentLoggedInUserEmail);
+      const userSnap = await userRef.get();
+      if (!userSnap.exists) {
         return res.status(404).json({ error: "User profile not found" });
       }
-      const user = userSnap.data();
+      const user = userSnap.data() || {};
 
       matchData.player2 = {
         username: user.username,
@@ -741,7 +730,7 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
       };
       matchData.status = "ready";
 
-      await setDoc(doc(db, "duels", matchData.id), matchData);
+      await db.collection("duels").doc(matchData.id).set(matchData);
       res.json(matchData);
     } catch (error) {
       respondWithFirestoreError(res, error, OperationType.WRITE, "duels");
@@ -752,8 +741,7 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
   app.get("/api/duels/:roomId", async (req, res) => {
     try {
       const cleanRoomId = req.params.roomId.replace("#", "").trim();
-      const q = query(collection(db, "duels"), where("roomId", "==", cleanRoomId));
-      const querySnap = await getDocs(q);
+      const querySnap = await db.collection("duels").where("roomId", "==", cleanRoomId).get();
       if (querySnap.empty) {
         return res.status(404).json({ error: "Duel room not found" });
       }
