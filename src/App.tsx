@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Plus, 
@@ -13,6 +14,8 @@ import {
   X,
   Code
 } from "lucide-react";
+import axios from "axios";
+import { useAuthStore } from "./store/authStore";
 
 import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
@@ -24,8 +27,40 @@ import DuelsView from "./components/DuelsView";
 
 import { Challenge, Project, UserStats } from "./types";
 
-export default function App() {
+const LoginView = () => (
+  <div className="flex items-center justify-center h-screen w-screen bg-[#051f20]">
+    <div className="bg-[#0b2b26] p-8 rounded-xl border border-brand-border text-center">
+      <h2 className="text-brand-primary text-xl mb-4 font-bold uppercase">CodeArena Connexion</h2>
+      <a href="/auth/google" className="block w-full bg-white text-black py-3 px-6 rounded-lg mb-3 font-semibold hover:bg-gray-100 transition">Continuer avec Google</a>
+      <a href="/auth/github" className="block w-full bg-gray-800 text-white py-3 px-6 rounded-lg font-semibold hover:bg-gray-700 transition">Continuer avec GitHub</a>
+    </div>
+  </div>
+);
+
+// Wrapper component to handle routing logic inside App layout
+function AppContent() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Keep internal tab state synced with route for now to avoid massive refactoring of Sidebar
   const [currentTab, setTab] = useState<string>("home");
+
+  useEffect(() => {
+     if(location.pathname === "/") setTab("home");
+     else if(location.pathname === "/editor") setTab("editor");
+     else if(location.pathname === "/challenges") setTab("challenges");
+     else if(location.pathname === "/profile") setTab("profile");
+     else if(location.pathname === "/duels") setTab("duels");
+     else if(location.pathname === "/support") setTab("support");
+     else if(location.pathname === "/docs") setTab("docs");
+  }, [location.pathname]);
+
+  const handleTabChange = (tab: string) => {
+    setTab(tab);
+    if(tab === "home") navigate("/");
+    else navigate(`/${tab}`);
+  };
+
 
   // Virtual projects management
   const [recentProjects, setRecentProjects] = useState<Project[]>([
@@ -204,7 +239,7 @@ if __name__ == "__main__":
       {/* Lateral navigation menu */}
       <Sidebar 
         currentTab={currentTab} 
-        setTab={setTab} 
+        setTab={handleTabChange}
         onNewProject={() => setShowNewProjectModal(true)} 
       />
 
@@ -495,5 +530,28 @@ if __name__ == "__main__":
       )}
 
     </div>
+  );
+}
+
+export default function App() {
+  const { setUser, isLoading } = useAuthStore();
+
+  useEffect(() => {
+    axios.get('/auth/me', { withCredentials: true })
+      .then(res => setUser(res.data.user))
+      .catch(() => setUser(null));
+  }, [setUser]);
+
+  if (isLoading) return <div className="h-screen w-screen bg-[#051f20] text-brand-primary font-bold flex items-center justify-center">Initialisation de CodeArena...</div>;
+
+  return (
+    <Router>
+      <Routes>
+        <Route path="/login" element={<LoginView />} />
+        <Route path="*" element={
+          <AppContent />
+        } />
+      </Routes>
+    </Router>
   );
 }
