@@ -1,0 +1,6 @@
+{
+  "name": "CodeArena",
+  "description": "Plateforme d'apprentissage et d'entraînement au code avec défis générés par l'IA et duels multijoueurs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
