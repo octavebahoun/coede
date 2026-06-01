@@ -22,6 +22,9 @@ import ChallengesView from "./components/ChallengesView";
 import ProfileView from "./components/ProfileView";
 import DuelsView from "./components/DuelsView";
 import LeaderboardView from "./components/LeaderboardView";
+import { auth } from "./firebase";
+import { onAuthStateChanged } from "firebase/auth";
+
 
 import { Challenge, Project, UserStats } from "./types";
 
@@ -31,7 +34,41 @@ export default function App() {
   // Dynamic user session state (Phase V2 Database)
   const [user, setUser] = useState<any | null>(null);
 
-  // Fetch logged in profile from V2 database on mount & when context refreshes
+  // Listen to Firebase Auth state on the client side and seamlessly synchronize the database user session
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const res = await fetch("/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: firebaseUser.email,
+              username: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Invité",
+              avatar: firebaseUser.photoURL || `https://api.dicebear.com/7.x/identicon/svg?seed=${firebaseUser.email}`,
+              provider: firebaseUser.providerData[0]?.providerId || "password"
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setUser(data.user);
+          }
+        } catch (err) {
+          console.error("Erreur de synchronisation utilisateur", err);
+        }
+      } else {
+        try {
+          await fetch("/auth/logout", { method: "POST" });
+        } catch (err) {
+          console.warn("Erreur de déconnexion globale", err);
+        }
+        setUser(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   const loadUserProfile = async () => {
     try {
       const response = await fetch("/auth/me");
@@ -47,34 +84,12 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    loadUserProfile();
-  }, []);
-
   const handleLogin = async (provider: string, email: string, username: string, avatar: string) => {
-    try {
-      const res = await fetch("/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, username, avatar, provider })
-      });
-      if (res.ok) {
-        await loadUserProfile();
-        setTab("profile");
-      }
-    } catch (err) {
-      console.error("Erreur d'authentification simulation OAuth", err);
-    }
+    // Left as stub since onAuthStateChanged is the real source of truth now!
   };
 
   const handleLogout = async () => {
-    try {
-      await fetch("/auth/logout", { method: "POST" });
-      setUser(null);
-      setTab("home");
-    } catch (err) {
-      console.error(err);
-    }
+    // Left as stub since signOut(auth) is the real source of truth now!
   };
 
   const handleUpdateMe = async (updates: { username?: string; preferences?: any }) => {

@@ -186,6 +186,19 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  // API Route - Firebase Client Credentials Config
+  app.get("/api/firebase-config", (_req, res) => {
+    res.json({
+      projectId: firebaseConfig.projectId,
+      appId: firebaseConfig.appId,
+      apiKey: firebaseConfig.apiKey,
+      authDomain: firebaseConfig.authDomain,
+      firestoreDatabaseId: firebaseConfig.firestoreDatabaseId,
+      storageBucket: firebaseConfig.storageBucket,
+      messagingSenderId: firebaseConfig.messagingSenderId
+    });
+  });
+
   // ================= AUTHENTICATION ENDPOINTS (V2 SPEC) =================
   
   // GET /auth/me - Retourne le profil utilisateur connecté

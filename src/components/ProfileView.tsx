@@ -16,8 +16,26 @@ import {
   Trash2,
   Check,
   RefreshCw,
-  Cpu
+  Cpu,
+  Lock,
+  User,
+  HelpCircle,
+  Eye,
+  EyeOff,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  GithubAuthProvider,
+  signOut,
+  updateProfile
+} from "firebase/auth";
+import { auth } from "../firebase";
+
 import { 
   LineChart, 
   Line, 
@@ -66,54 +84,243 @@ export default function ProfileView({ user, onLogin, onLogout, onUpdateMe, onDel
     }
   };
 
+  // Real Firebase Auth credentials & views states
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [showSetupGuide, setShowSetupGuide] = useState(false);
+
+  const handleEmailSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) return;
+    setAuthLoading(true);
+    setAuthError("");
+    try {
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+    } catch (err: any) {
+      console.error(err);
+      setAuthError(err.message || "Erreur de connexion.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleEmailSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password || !username) {
+      setAuthError("Veuillez remplir tous les champs !");
+      return;
+    }
+    setAuthLoading(true);
+    setAuthError("");
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      if (cred.user) {
+        await updateProfile(cred.user, {
+          displayName: username.trim()
+        });
+      }
+    } catch (err: any) {
+      console.error(err);
+      setAuthError(err.message || "Erreur lors de la création du compte.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSocialSignIn = async (providerName: "google" | "github") => {
+    setAuthLoading(true);
+    setAuthError("");
+    try {
+      const provider = providerName === "google" ? new GoogleAuthProvider() : new GithubAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (err: any) {
+      console.error(err);
+      setAuthError(
+        `Échec de connexion via ${providerName === "google" ? "Google" : "GitHub"}. Veuillez vérifier que cette option est activée dans la console Firebase.`
+      );
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   // If logged out, render a highly styled V2 Authentication layout
   if (!user) {
     return (
-      <div className="flex-grow overflow-y-auto p-8 flex items-center justify-center font-sans">
-        <div className="max-w-md w-full bg-[#121214] border border-brand-border rounded-2xl p-8 premium-glow text-center">
-          <div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <Shield className="w-7 h-7" />
+      <div className="flex-grow overflow-y-auto p-6 md:p-8 flex items-center justify-center font-sans">
+        <div className="max-w-md w-full bg-[#121214] border border-brand-border rounded-2xl p-6 md:p-8 premium-glow flex flex-col gap-6">
+          <div className="text-center">
+            <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Shield className="w-6 h-6 animate-pulse" />
+            </div>
+            <h2 className="text-xl font-extrabold text-[#DAF1DE] tracking-tight uppercase mb-1">Authentification Réelle</h2>
+            <p className="text-[11px] text-brand-muted leading-relaxed">
+              Connectez-vous directement via votre propre instance de Firebase Auth pour sécuriser vos données d'évaluation d'arène.
+            </p>
           </div>
 
-          <h2 className="text-2xl font-extrabold text-[#DAF1DE] tracking-tight uppercase mb-2">Authentification V2</h2>
-          <p className="text-xs text-brand-muted mb-6 leading-relaxed">
-            Pour sauvegarder vos défis, accéder au classement des ligues, configurer vos préférences et synchroniser vos victoires, connectez-vous de manière sécurisée.
-          </p>
-
-          <div className="flex flex-col gap-3 font-medium text-sm">
-            {/* Google Mock OAuth Trigger */}
+          {/* Toggle Tab header */}
+          <div className="grid grid-cols-2 bg-brand-darkest p-1 rounded-xl border border-brand-border/40">
             <button
-              onClick={() => onLogin("google", "teamexellence@gmail.com", "GuillaumeD", "https://lh3.googleusercontent.com/aida-public/AB6AXuBZymiT42t-KbyZBIGa7_sgs9hcRwdVtrtQwk1ddrc3uRWIvLJz9RxRQdr-QBHYI47aMHC5m_FwnHUhM-PYFPKWMbYqao7k-oi3jM_cXFpeg1PUpLFQpzV14NWAHsGz6o8LJvZjm3smBJVu61x4px-ojGgMws7TF8SD3LiIunJIPXawI7f5ryyHNK3CRf65FkYK2gsmwvSsqxgz_u3OiXfE3046aTLvZ8p3pAjPtENjEOepLPZ7w1YntI6Zvwp4ZqL7Lg260W0HKis")}
-              className="bg-white hover:bg-neutral-100 text-black py-3 px-4 rounded-xl flex items-center justify-center gap-3 transition-colors duration-200 cursor-pointer text-xs font-bold uppercase tracking-wider shadow-sm"
+              onClick={() => { setAuthMode("signin"); setAuthError(""); }}
+              className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${authMode === "signin" ? "bg-brand-primary text-brand-darkest shadow-md" : "text-brand-muted hover:text-[#DAF1DE]"}`}
+            >
+              CONNEXION
+            </button>
+            <button
+              onClick={() => { setAuthMode("signup"); setAuthError(""); }}
+              className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${authMode === "signup" ? "bg-brand-primary text-brand-darkest shadow-md" : "text-brand-muted hover:text-[#DAF1DE]"}`}
+            >
+              CRÉER COMPTE
+            </button>
+          </div>
+
+          {/* Error Banner */}
+          {authError && (
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-[10px] font-mono leading-relaxed max-h-32 overflow-y-auto">
+              {authError}
+            </div>
+          )}
+
+          {/* Forms */}
+          <form onSubmit={authMode === "signin" ? handleEmailSignIn : handleEmailSignUp} className="flex flex-col gap-4 font-sans text-xs">
+            {authMode === "signup" && (
+              <div className="flex flex-col gap-1.5 text-left">
+                <label className="text-[10px] text-brand-muted uppercase font-bold tracking-wider flex items-center gap-1">
+                  <User className="w-3 h-3 text-brand-primary" /> Pseudo du Joueur
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Ex: RustaceanElite"
+                  className="bg-[#051f20] border border-brand-border text-brand-primary focus:outline-none focus:border-brand-primary rounded-xl px-3.5 py-2.5 font-sans"
+                />
+              </div>
+            )}
+
+            <div className="flex flex-col gap-1.5 text-left">
+              <label className="text-[10px] text-brand-muted uppercase font-bold tracking-wider flex items-center gap-1">
+                <Mail className="w-3 h-3 text-brand-primary" /> Adresse Email
+              </label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Ex: codeur@arena.com"
+                className="bg-[#051f20] border border-brand-border text-brand-primary focus:outline-none focus:border-brand-primary rounded-xl px-3.5 py-2.5 font-sans"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5 relative text-left">
+              <label className="text-[10px] text-brand-muted uppercase font-bold tracking-wider flex items-center gap-1">
+                <Lock className="w-3 h-3 text-brand-primary" /> Mot de passe
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full bg-[#051f20] border border-brand-border text-brand-primary focus:outline-none focus:border-brand-primary rounded-xl px-3.5 py-2.5 font-sans pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-brand-muted hover:text-brand-primary"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={authLoading}
+              className="w-full bg-brand-primary hover:bg-opacity-95 text-brand-darkest font-bold text-xs py-3 rounded-xl uppercase tracking-wider transition-colors shadow mt-2 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {authLoading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Traitement...</span>
+                </>
+              ) : authMode === "signin" ? (
+                "Se Connecter"
+              ) : (
+                "Créer mon Compte"
+              )}
+            </button>
+          </form>
+
+          {/* Social login divider */}
+          <div className="flex items-center text-[10px] text-brand-muted font-mono uppercase tracking-widest gap-2">
+            <span className="h-[1px] bg-brand-border/40 flex-1"></span>
+            <span>Ou via OAuth</span>
+            <span className="h-[1px] bg-brand-border/40 flex-1"></span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            {/* Real Google OAuth trigger */}
+            <button
+              onClick={() => handleSocialSignIn("google")}
+              disabled={authLoading}
+              className="bg-white hover:bg-neutral-100 text-black py-2.5 px-2 rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer text-[10px] font-bold uppercase tracking-wider shadow-sm disabled:opacity-50"
             >
               <img 
                 src="https://images.unsplash.com/photo-1573804633927-bfcbcd909acd?auto=format&fit=crop&w=36&h=36&q=80" 
                 alt="Google" 
-                className="w-4 h-4 rounded-full"
+                className="w-3.5 h-3.5 rounded-full"
               />
-              <span>Continuer avec Google (GuillaumeD)</span>
+              <span>Google</span>
             </button>
 
-            {/* GitHub Mock OAuth Trigger */}
+            {/* Real GitHub OAuth trigger */}
             <button
-              onClick={() => onLogin("github", "alex_coder99@codearena.com", "AlexCoder_99", "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&h=120&q=80")}
-              className="bg-[#18181b] hover:bg-[#202024] text-white border border-[#27272a] py-3 px-4 rounded-xl flex items-center justify-center gap-3 transition-colors duration-200 cursor-pointer text-xs font-bold uppercase tracking-wider"
+              onClick={() => handleSocialSignIn("github")}
+              disabled={authLoading}
+              className="bg-[#18181b] hover:bg-[#202024] text-white border border-[#27272a] py-2.5 px-2 rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer text-[10px] font-bold uppercase tracking-wider disabled:opacity-50"
             >
               <img 
                 src="https://images.unsplash.com/photo-1618401471353-b98aedd07871?auto=format&fit=crop&w=36&h=36&q=80" 
                 alt="GitHub" 
-                className="w-4 h-4 rounded-full"
+                className="w-3.5 h-3.5 rounded-full"
               />
-              <span>Continuer avec GitHub (AlexCoder_99)</span>
+              <span>GitHub</span>
             </button>
+          </div>
 
-            {/* Alternative Guest Login */}
+          {/* Collapsible integration tutorial */}
+          <div className="mt-2 border-t border-brand-border/30 pt-4 text-left">
             <button
-              onClick={() => onLogin("google", `invité_${Math.floor(Math.random()*100)}@codearena.com`, `Codeur_Anonyme`, "")}
-              className="mt-2 text-zinc-500 hover:text-white transition-colors text-xs font-mono tracking-wider cursor-pointer py-1"
+              onClick={() => setShowSetupGuide(!showSetupGuide)}
+              className="w-full flex items-center justify-between text-[11px] font-bold text-brand-primary p-1 cursor-pointer"
             >
-              Créer un profil invité temporaire
+              <span className="flex items-center gap-1.5">
+                <HelpCircle className="w-3.5 h-3.5" />
+                <span>Prêter main forte à la configuration d'arène ?</span>
+              </span>
+              {showSetupGuide ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
+            
+            {showSetupGuide && (
+              <div className="mt-3 p-3.5 bg-brand-darkest/70 border border-brand-border/50 rounded-xl flex flex-col gap-3 font-sans text-[10px] text-brand-muted leading-relaxed">
+                <div>
+                  <p className="font-bold text-[#DAF1DE] mb-1">1. Activer l'Email/Mot de passe :</p>
+                  <p>Allez dans votre <strong>Console Firebase</strong> &gt; <strong>Authentication</strong> &gt; <strong>Sign-in method</strong> &gt; Activez <strong>Adresse e-mail/Mot de passe</strong> &gt; Enregistrer.</p>
+                </div>
+                <div>
+                  <p className="font-bold text-[#DAF1DE] mb-1">2. Activer l'authentification GitHub :</p>
+                  <p>Inscrivez une nouvelle application sur GitHub (Settings &gt; Developer settings &gt; OAuth Apps) et configurez l'URL d'autorisation fournie par la console Firebase, puis renseignez l'ID Client et le code secret sur Firebase.</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -150,7 +357,13 @@ export default function ProfileView({ user, onLogin, onLogout, onUpdateMe, onDel
         
         {/* Logout callback */}
         <button 
-          onClick={onLogout}
+          onClick={async () => {
+            try {
+              await signOut(auth);
+            } catch (err) {
+              console.error(err);
+            }
+          }}
           className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs py-2 px-4 rounded-xl flex items-center gap-2 cursor-pointer transition-colors"
         >
           <span>Déconnexion</span>
