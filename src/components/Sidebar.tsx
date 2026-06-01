@@ -8,23 +8,33 @@ import {
   Terminal, 
   Plus, 
   HelpCircle, 
-  BookOpen 
+  BookOpen,
+  Award,
+  LogIn
 } from "lucide-react";
 
 interface SidebarProps {
   currentTab: string;
   setTab: (tab: string) => void;
   onNewProject: () => void;
+  user: any | null;
+  onAuthClick: () => void;
 }
 
-export default function Sidebar({ currentTab, setTab, onNewProject }: SidebarProps) {
+export default function Sidebar({ currentTab, setTab, onNewProject, user, onAuthClick }: SidebarProps) {
   const menuItems = [
     { id: "home", label: "Accueil", icon: Home },
     { id: "editor", label: "Éditeur", icon: Code },
     { id: "challenges", label: "Défis", icon: Trophy },
+    { id: "leaderboard", label: "Classement", icon: Award },
     { id: "profile", label: "Profil", icon: User },
     { id: "duels", label: "Duels", icon: Zap },
   ];
+
+  const getInitials = (name: string) => {
+    if (!name) return "AN";
+    return name.slice(0, 2).toUpperCase();
+  };
 
   return (
     <nav className="w-64 bg-[#09090b] border-r border-[#27272a] h-screen flex flex-col py-6 px-4 shrink-0 select-none z-20">
@@ -95,13 +105,43 @@ export default function Sidebar({ currentTab, setTab, onNewProject }: SidebarPro
 
         {/* User profile card matching the template */}
         <div className="mt-4 pt-4 border-t border-[#27272a] flex items-center gap-3 px-2">
-          <div className="w-9 h-9 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center font-semibold text-xs text-zinc-200">
-            GD
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-semibold text-zinc-100 truncate">GuillaumeD</p>
-            <p className="text-[10px] text-zinc-500 truncate">Lead Fullstack</p>
-          </div>
+          {user ? (
+            <div className="flex items-center gap-3 justify-between w-full">
+              <div className="flex items-center gap-3 min-w-0">
+                {user.avatar ? (
+                  <img 
+                    src={user.avatar} 
+                    alt={user.username} 
+                    className="w-9 h-9 rounded-full object-cover border border-zinc-700"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center font-semibold text-xs text-zinc-200">
+                    {getInitials(user.username)}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-zinc-100 truncate">{user.username}</p>
+                  <p className="text-[9px] font-mono font-bold text-emerald-400 uppercase tracking-wider">
+                    {user.provider} : Niv.{user.level}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <button 
+              onClick={onAuthClick}
+              className="flex items-center gap-3 w-full text-left py-1.5 px-2 hover:bg-[#18181b] rounded transition-all cursor-pointer font-sans"
+            >
+              <div className="w-9 h-9 rounded-full bg-zinc-900 border border-dashed border-zinc-700 flex items-center justify-center text-zinc-500 hover:text-zinc-300">
+                <LogIn className="w-4 h-4 animate-pulse" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-zinc-400">Non Connecté</p>
+                <p className="text-[10px] text-zinc-500 font-mono">Se connecter</p>
+              </div>
+            </button>
+          )}
         </div>
       </div>
     </nav>

@@ -92,43 +92,46 @@ export default function EditorView({ activeProject, onSaveFiles }: EditorViewPro
     }
   };
 
-  // Compile & run code simulation
-  const handleExecuteCode = () => {
+  // Compile & run code simulation using real backend compiler sandbox
+  const handleExecuteCode = async () => {
     setIsCompiling(true);
     setActiveConsoleTab("output");
-    setRunOutputCode("Compilation en cours...\nLancement du conteneur virtuel...");
+    setRunOutputCode("Compilation sur le conteneur CodeArena...\nConnexion à la sandbox virtuelle...");
 
-    setTimeout(() => {
-      // Analyze what code says to mock a realistic response
-      const code = files[activeFile] || "";
-      let outputMocks = "[SUCCESS] Compilation réussie.\n\n=== EXÉCUTION ===\n";
-      
-      if (activeFile.endsWith(".html") || files["index.html"]) {
-        // Prepare HTML live preview simulated content
-        const indexHtml = files["index.html"] || "<h3>Aucun fichier index.html</h3>";
-        const scriptCode = files["main.js"] || "";
-        
-        let integrated = indexHtml;
-        if (scriptCode) {
-          integrated = indexHtml.replace("</body>", `<script>${scriptCode}</script></body>`);
-        }
-        setPreviewIframeContent(integrated);
-        setShowBrowserPreview(true);
+    // HTML / Browser rendering
+    if (activeFile.endsWith(".html") || files["index.html"]) {
+      const indexHtml = files["index.html"] || "<h3>Aucun fichier index.html</h3>";
+      const scriptCode = files["main.js"] || "";
+      let integrated = indexHtml;
+      if (scriptCode) {
+        integrated = indexHtml.replace("</body>", `<script>${scriptCode}</script></body>`);
       }
+      setPreviewIframeContent(integrated);
+      setShowBrowserPreview(true);
+    }
 
-      if (code.includes("findPath")) {
-        outputMocks += "Appel de la fonction findPath(grid, [0,0], [2,2])...\nRecherche du chemin de [0,0] à [2,2]...\n• Étape 1: [0,0]\n• Étape 2: [0,1]\n• Étape 3: [1,1]\n• Étape 4: [2,2]\nChemin trouvé avec succès en 4 étapes.\n\n[INFO] Test d'algorithme réussi ! Score: 100/100";
-      } else if (code.includes("DuelInstance")) {
-        outputMocks += "Initialisation du moteur de l'arène...\nArène prête : Labyrinthe Cosmique v2\nConteneur en cours d'exécution...\n[INFO] Le duel simulé est actif.\nStatus: Attente de soumission.";
-      } else if (code.includes("function") || code.includes("class")) {
-        outputMocks += "Lancement de la fonction...\n" + (code.match(/function\s+(\w+)/)?.[1] || "main") + "() a renvoyé : OK\nExécution terminée avec code 0.";
-      } else {
-        outputMocks += "Sortie brute :\n----------------------\n" + code.slice(0, 300) + "\n----------------------\nExécution de script terminée.";
-      }
+    try {
+      const response = await fetch("/api/execute", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          language: activeProject?.language || "JavaScript",
+          filename: activeFile,
+          code: files[activeFile] || "",
+          files: files
+        })
+      });
 
-      setRunOutputCode(outputMocks);
+      const data = await response.json();
+      setRunOutputCode(data.output || "[INFO] Succès. Aucune sortie console renvoyée.");
+    } catch (error: any) {
+      console.error(error);
+      setRunOutputCode(`[ERREUR DE TERMINAL] Connexion au bac à sable perdue.\n${error?.message || error}`);
+    } finally {
       setIsCompiling(false);
-    }, 1200);
+    }
   };
 
   // Basic syntax coloring logic

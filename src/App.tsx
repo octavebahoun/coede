@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Plus, 
@@ -21,11 +21,86 @@ import EditorView from "./components/EditorView";
 import ChallengesView from "./components/ChallengesView";
 import ProfileView from "./components/ProfileView";
 import DuelsView from "./components/DuelsView";
+import LeaderboardView from "./components/LeaderboardView";
 
 import { Challenge, Project, UserStats } from "./types";
 
 export default function App() {
   const [currentTab, setTab] = useState<string>("home");
+
+  // Dynamic user session state (Phase V2 Database)
+  const [user, setUser] = useState<any | null>(null);
+
+  // Fetch logged in profile from V2 database on mount & when context refreshes
+  const loadUserProfile = async () => {
+    try {
+      const response = await fetch("/auth/me");
+      if (response.ok) {
+        const u = await response.json();
+        setUser(u);
+      } else {
+        setUser(null);
+      }
+    } catch (err) {
+      console.warn("L'utilisateur n'est pas encore identifié en BDD", err);
+      setUser(null);
+    }
+  };
+
+  useEffect(() => {
+    loadUserProfile();
+  }, []);
+
+  const handleLogin = async (provider: string, email: string, username: string, avatar: string) => {
+    try {
+      const res = await fetch("/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, username, avatar, provider })
+      });
+      if (res.ok) {
+        await loadUserProfile();
+        setTab("profile");
+      }
+    } catch (err) {
+      console.error("Erreur d'authentification simulation OAuth", err);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/auth/logout", { method: "POST" });
+      setUser(null);
+      setTab("home");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleUpdateMe = async (updates: { username?: string; preferences?: any }) => {
+    try {
+      const res = await fetch("/api/users/me", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) {
+        await loadUserProfile();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteMe = async () => {
+    try {
+      await fetch("/api/users/me", { method: "DELETE" });
+      setUser(null);
+      setTab("home");
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   // Virtual projects management
   const [recentProjects, setRecentProjects] = useState<Project[]>([
@@ -84,15 +159,38 @@ if __name__ == "__main__":
 
   const [activeProject, setActiveProject] = useState<Project>(recentProjects[0]);
 
-  // Reactive user profile metrics state
-  const [userStats, setUserStats] = useState<UserStats>({
-    level: 4,
-    totalScore: 945,
-    challengesDone: 11,
-    wins: 15,
-    losses: 8,
-    recentScores: [75, 94, 88, 92, 65, 80]
-  });
+  // Derived userStats state with fallback block if not loaded
+  const userStats = {
+    level: user ? user.level : 1,
+    totalScore: user ? user.totalScore : 0,
+    challengesDone: user ? user.challengesDone : 0,
+    wins: user ? user.wins : 0,
+    losses: user ? user.losses : 0,
+    recentScores: user ? user.recentScores : [],
+    proPassUnlocked: user ? user.proPassUnlocked : false
+  };
+
+  const handleActivateProPass = async () => {
+    if (user) {
+      await handleUpdateMe({
+        preferences: user.preferences,
+        username: user.username,
+        // Set proPassUnlocked as part of database
+      });
+      // also set it directly
+      try {
+        await fetch("/api/users/me", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ proPassUnlocked: true })
+        });
+        await loadUserProfile();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    setShowPremiumModal(false);
+  };
 
   // Modal dialog states
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
@@ -145,47 +243,63 @@ if __name__ == "__main__":
 
   // Code evaluator feedback modifiers
   const handleChallengeEvaluated = (score: number) => {
-    setUserStats(prev => {
-      const updatedScores = [...prev.recentScores, score];
-      const addedScore = score === 100 ? 100 : score;
-      const newTotal = prev.totalScore + addedScore;
-      const newLevel = Math.floor(newTotal / 500) + 1; // 500 XP per level
-      
-      return {
-        ...prev,
-        totalScore: newTotal,
-        level: newLevel,
-        challengesDone: prev.challengesDone + 1,
-        recentScores: updatedScores
-      };
-    });
+    // Reload user profile from server to reflect automatically processed DB record
+    loadUserProfile();
   };
 
   // Duel matchmaking winning counters
-  const handleDuelWinner = () => {
-    setUserStats(prev => {
-      const newTotal = prev.totalScore + 45;
-      return {
-        ...prev,
-        totalScore: newTotal,
-        level: Math.floor(newTotal / 500) + 1,
-        wins: prev.wins + 1,
-        recentScores: [...prev.recentScores, 95]
-      };
-    });
+  const handleDuelWinner = async () => {
+    if (user) {
+      const addedScore = 45;
+      const newTotal = user.totalScore + addedScore;
+      const newLevel = Math.floor(newTotal / 500) + 1;
+      try {
+        await fetch("/api/users/me", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: user.username,
+            preferences: user.preferences,
+            proPassUnlocked: user.proPassUnlocked
+          })
+        });
+        // We'll update duels outcomes natively on Express in actual V2 if needed, 
+        // let's triggers direct database update route:
+        user.wins += 1;
+        user.totalScore += 45;
+        user.level = Math.floor(user.totalScore / 500) + 1;
+        user.recentScores.push(95);
+        
+        await fetch("/api/users/me", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(user)
+        });
+        await loadUserProfile();
+      } catch (err) {
+        console.error(err);
+      }
+    }
   };
 
-  const handleDuelLoser = () => {
-    setUserStats(prev => {
-      const newTotal = prev.totalScore + 10;
-      return {
-        ...prev,
-        totalScore: newTotal,
-        level: Math.floor(newTotal / 500) + 1,
-        losses: prev.losses + 1,
-        recentScores: [...prev.recentScores, 65]
-      };
-    });
+  const handleDuelLoser = async () => {
+    if (user) {
+      try {
+        user.losses += 1;
+        user.totalScore += 10;
+        user.level = Math.floor(user.totalScore / 500) + 1;
+        user.recentScores.push(65);
+        
+        await fetch("/api/users/me", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(user)
+        });
+        await loadUserProfile();
+      } catch (err) {
+        console.error(err);
+      }
+    }
   };
 
   const syncEditedProjectFiles = (updatedFiles: Record<string, string>) => {
@@ -206,6 +320,8 @@ if __name__ == "__main__":
         currentTab={currentTab} 
         setTab={setTab} 
         onNewProject={() => setShowNewProjectModal(true)} 
+        user={user}
+        onAuthClick={() => setTab("profile")}
       />
 
       {/* Main frame workspace layout */}
@@ -213,6 +329,7 @@ if __name__ == "__main__":
         <Header 
           onGoProClick={() => setShowPremiumModal(true)} 
           openSettings={() => setShowSettingsModal(true)}
+          proPassUnlocked={userStats.proPassUnlocked}
         />
 
         {/* Dynamic content renders inside interactive animate presences */}
@@ -263,6 +380,8 @@ if __name__ == "__main__":
                 <ChallengesView 
                   onCodeEvaluated={handleChallengeEvaluated}
                   onStartChallenge={() => {}}
+                  proPassUnlocked={userStats.proPassUnlocked}
+                  onGoProClick={() => setShowPremiumModal(true)}
                 />
               </motion.div>
             )}
@@ -276,7 +395,26 @@ if __name__ == "__main__":
                 transition={{ duration: 0.18 }}
                 className="flex-1 flex flex-col overflow-hidden"
               >
-                <ProfileView stats={userStats} />
+                <ProfileView 
+                  user={user}
+                  onLogin={handleLogin}
+                  onLogout={handleLogout}
+                  onUpdateMe={handleUpdateMe}
+                  onDeleteMe={handleDeleteMe}
+                />
+              </motion.div>
+            )}
+
+            {currentTab === "leaderboard" && (
+              <motion.div 
+                key="leaderboard"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.18 }}
+                className="flex-1 flex flex-col overflow-hidden"
+              >
+                <LeaderboardView currentUserEmail={user?.email} />
               </motion.div>
             )}
 
@@ -434,7 +572,7 @@ if __name__ == "__main__":
             </div>
 
             <button
-              onClick={() => setShowPremiumModal(false)}
+              onClick={handleActivateProPass}
               className="w-full bg-brand-primary text-brand-darkest hover:bg-opacity-95 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-colors shadow cursor-pointer"
             >
               S'abonner - Activer

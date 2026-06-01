@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { 
   Trophy, 
   Award, 
@@ -9,7 +9,14 @@ import {
   Flame, 
   Share2, 
   MapPin, 
-  Grid 
+  Grid,
+  LogIn,
+  Settings,
+  Shield,
+  Trash2,
+  Check,
+  RefreshCw,
+  Cpu
 } from "lucide-react";
 import { 
   LineChart, 
@@ -20,46 +27,142 @@ import {
   ResponsiveContainer, 
   CartesianGrid 
 } from "recharts";
-import { UserStats } from "../types";
 
 interface ProfileViewProps {
-  stats: UserStats;
+  user: any | null;
+  onLogin: (provider: string, email: string, username: string, avatar: string) => Promise<void>;
+  onLogout: () => Promise<void>;
+  onUpdateMe: (updates: { username?: string; preferences?: any }) => Promise<void>;
+  onDeleteMe: () => Promise<void>;
 }
 
-export default function ProfileView({ stats }: ProfileViewProps) {
-  // Stats arrays formatted for Recharts LineChart
-  const data = stats.recentScores.map((score, index) => ({
-    name: `Défis ${index + 1}`,
+export default function ProfileView({ user, onLogin, onLogout, onUpdateMe, onDeleteMe }: ProfileViewProps) {
+  // Input editing states
+  const [editingUsername, setEditingUsername] = useState(user ? user.username : "");
+  const [editorTheme, setEditorTheme] = useState(user?.preferences?.editorTheme || "vs-dark");
+  const [preferredModel, setPreferredModel] = useState(user?.preferences?.aiModel || "gemini-3.5-flash");
+  const [updating, setUpdating] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setUpdating(true);
+    setSuccessMsg("");
+    try {
+      await onUpdateMe({
+        username: editingUsername.trim(),
+        preferences: {
+          editorTheme,
+          aiModel: preferredModel
+        }
+      });
+      setSuccessMsg("Profil et préférences mis à jour avec succès en BDD !");
+      setTimeout(() => setSuccessMsg(""), 3500);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // If logged out, render a highly styled V2 Authentication layout
+  if (!user) {
+    return (
+      <div className="flex-grow overflow-y-auto p-8 flex items-center justify-center font-sans">
+        <div className="max-w-md w-full bg-[#121214] border border-brand-border rounded-2xl p-8 premium-glow text-center">
+          <div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <Shield className="w-7 h-7" />
+          </div>
+
+          <h2 className="text-2xl font-extrabold text-[#DAF1DE] tracking-tight uppercase mb-2">Authentification V2</h2>
+          <p className="text-xs text-brand-muted mb-6 leading-relaxed">
+            Pour sauvegarder vos défis, accéder au classement des ligues, configurer vos préférences et synchroniser vos victoires, connectez-vous de manière sécurisée.
+          </p>
+
+          <div className="flex flex-col gap-3 font-medium text-sm">
+            {/* Google Mock OAuth Trigger */}
+            <button
+              onClick={() => onLogin("google", "teamexellence@gmail.com", "GuillaumeD", "https://lh3.googleusercontent.com/aida-public/AB6AXuBZymiT42t-KbyZBIGa7_sgs9hcRwdVtrtQwk1ddrc3uRWIvLJz9RxRQdr-QBHYI47aMHC5m_FwnHUhM-PYFPKWMbYqao7k-oi3jM_cXFpeg1PUpLFQpzV14NWAHsGz6o8LJvZjm3smBJVu61x4px-ojGgMws7TF8SD3LiIunJIPXawI7f5ryyHNK3CRf65FkYK2gsmwvSsqxgz_u3OiXfE3046aTLvZ8p3pAjPtENjEOepLPZ7w1YntI6Zvwp4ZqL7Lg260W0HKis")}
+              className="bg-white hover:bg-neutral-100 text-black py-3 px-4 rounded-xl flex items-center justify-center gap-3 transition-colors duration-200 cursor-pointer text-xs font-bold uppercase tracking-wider shadow-sm"
+            >
+              <img 
+                src="https://images.unsplash.com/photo-1573804633927-bfcbcd909acd?auto=format&fit=crop&w=36&h=36&q=80" 
+                alt="Google" 
+                className="w-4 h-4 rounded-full"
+              />
+              <span>Continuer avec Google (GuillaumeD)</span>
+            </button>
+
+            {/* GitHub Mock OAuth Trigger */}
+            <button
+              onClick={() => onLogin("github", "alex_coder99@codearena.com", "AlexCoder_99", "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&h=120&q=80")}
+              className="bg-[#18181b] hover:bg-[#202024] text-white border border-[#27272a] py-3 px-4 rounded-xl flex items-center justify-center gap-3 transition-colors duration-200 cursor-pointer text-xs font-bold uppercase tracking-wider"
+            >
+              <img 
+                src="https://images.unsplash.com/photo-1618401471353-b98aedd07871?auto=format&fit=crop&w=36&h=36&q=80" 
+                alt="GitHub" 
+                className="w-4 h-4 rounded-full"
+              />
+              <span>Continuer avec GitHub (AlexCoder_99)</span>
+            </button>
+
+            {/* Alternative Guest Login */}
+            <button
+              onClick={() => onLogin("google", `invité_${Math.floor(Math.random()*100)}@codearena.com`, `Codeur_Anonyme`, "")}
+              className="mt-2 text-zinc-500 hover:text-white transition-colors text-xs font-mono tracking-wider cursor-pointer py-1"
+            >
+              Créer un profil invité temporaire
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Format Recharts data safely
+  const recentScores = user.recentScores || [80, 85, 75];
+  const chartData = recentScores.map((score: number, index: number) => ({
+    name: `Soum. ${index + 1}`,
     score: score
   }));
 
   const achievements = [
-    { title: "Maître du Pathfinding", description: "Atteindre une efficacité de 94% sur Neural Pathfinding.", icon: Award, unlocked: true },
-    { title: "Légende Temporelle", description: "Avoir résolu un défi dans la dernière minute du compte à rebours.", icon: Flame, unlocked: true },
-    { title: "Diamant Poli", description: "Franchir le palier du rang Diamant III en arène de duels.", icon: Trophy, unlocked: true },
-    { title: "Esprit Clairvoyant", description: "Soumettre 5 algorithmes d'affilée sans aucune erreur de syntaxe statique.", icon: CheckCircle, unlocked: false }
+    { title: "Maître du Pathfinding", description: "Atteindre une efficacité de 94% sur Neural Pathfinding.", icon: Award, unlocked: user.level >= 3 },
+    { title: "Légende Temporelle", description: "Avoir résolu un défi dans la dernière minute du compte à rebours.", icon: Flame, unlocked: user.wins >= 5 },
+    { title: "Diamant Poli", description: "Franchir le palier du rang Diamant III en arène de duels.", icon: Trophy, unlocked: user.wins >= 12 },
+    { title: "Esprit Clairvoyant", description: "Soumettre 5 algorithmes d'affilée sans aucune erreur de syntaxe statique.", icon: CheckCircle, unlocked: user.level >= 5 }
   ];
 
-  const levelPercent = Math.min(((stats.totalScore % 500) / 500) * 100, 100);
+  const levelPercent = Math.min(((user.totalScore % 500) / 500) * 100, 100);
 
   return (
     <div className="flex-grow overflow-y-auto p-8 select-none max-w-7xl mx-auto w-full font-sans">
       
       {/* Title block */}
-      <div className="mb-10 flex justify-between items-start">
+      <div className="mb-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-4xl font-extrabold text-[#DAF1DE] tracking-tight uppercase mb-2">Profil & Statut</h2>
+          <h2 className="text-4xl font-extrabold text-[#DAF1DE] tracking-tight uppercase mb-2">Profil & Préférences</h2>
           <p className="text-sm font-medium text-brand-muted max-w-xl">
-            Suivez d'un coup d'œil l'activité de vos algorithmes, vos victoires récentes en duel, ainsi que l'historique complet de votre score.
+            Configurez votre espace d'arène d'élite, gérez vos variables de compilation et consultez votre progression synchronisée dans la BDD CodeArena.
           </p>
         </div>
         
-        {/* Share profile placeholder */}
-        <button className="bg-brand-active/50 text-brand-primary border border-brand-border/60 text-xs py-2 px-4 rounded-xl flex items-center gap-2 cursor-pointer hover:border-brand-primary transition-colors">
-          <Share2 className="w-4 h-4" />
-          <span>Partager Profil</span>
+        {/* Logout callback */}
+        <button 
+          onClick={onLogout}
+          className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs py-2 px-4 rounded-xl flex items-center gap-2 cursor-pointer transition-colors"
+        >
+          <span>Déconnexion</span>
         </button>
       </div>
+
+      {successMsg && (
+        <div className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2 font-mono">
+          <Check className="w-4 h-4" />
+          <span>{successMsg}</span>
+        </div>
+      )}
 
       {/* Grid: Bio details and progression */}
       <div className="grid grid-cols-12 gap-6 mb-8">
@@ -68,41 +171,48 @@ export default function ProfileView({ stats }: ProfileViewProps) {
         <div className="col-span-12 lg:col-span-4 bg-brand-surface border border-brand-border rounded-xl p-6 flex flex-col items-center text-center hover:border-brand-muted/70 transition-colors duration-300 premium-glow">
           <div className="w-24 h-24 rounded-full border-2 border-brand-primary p-1 relative mb-4">
             <div className="absolute inset-0 rounded-full border border-brand-primary animate-ping opacity-10"></div>
-            <img 
-              alt="Votre Avatar" 
-              className="w-full h-full object-cover rounded-full filter grayscale contrast-125"
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuBZymiT42t-KbyZBIGa7_sgs9hcRwdVtrtQwk1ddrc3uRWIvLJz9RxRQdr-QBHYI47aMHC5m_FwnHUhM-PYFPKWMbYqao7k-oi3jM_cXFpeg1PUpLFQpzV14NWAHsGz6o8LJvZjm3smBJVu61x4px-ojGgMws7TF8SD3LiIunJIPXawI7f5ryyHNK3CRf65FkYK2gsmwvSsqxgz_u3OiXfE3046aTLvZ8p3pAjPtENjEOepLPZ7w1YntI6Zvwp4ZqL7Lg260W0HKis"
-            />
+            {user.avatar ? (
+              <img 
+                alt="Votre Avatar" 
+                className="w-full h-full object-cover rounded-full filter grayscale contrast-125 border border-zinc-800"
+                src={user.avatar}
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="w-full h-full rounded-full bg-zinc-800 flex items-center justify-center text-zinc-300 font-bold text-xl">
+                {user.username.slice(0, 2).toUpperCase()}
+              </div>
+            )}
             <div className="absolute -bottom-1 -right-1 bg-brand-primary border border-brand-border rounded-full p-1 shadow-md">
               <Award className="w-4 h-4 text-brand-darkest fill-brand-darkest" />
             </div>
           </div>
 
-          <h3 className="font-extrabold text-xl text-[#DAF1DE] tracking-tight">GuillaumeD</h3>
+          <h3 className="font-extrabold text-xl text-[#DAF1DE] tracking-tight">{user.username}</h3>
           <span className="text-xs font-bold text-brand-muted font-mono bg-brand-darkest px-3 py-1 rounded-full border border-brand-border/30 mt-1.5 uppercase tracking-wide">
-            Rang : Diamant III
+            {user.provider === "github" ? "GitHub Elite" : "Ligue Google"}
           </span>
 
           <div className="w-full border-t border-brand-border/40 my-4 pt-4 flex flex-col gap-2.5 text-xs text-brand-muted text-left">
             <div className="flex items-center gap-2.5">
               <Mail className="w-4 h-4 text-brand-muted" />
-              <span>teamexellence@gmail.com</span>
+              <span className="truncate">{user.email}</span>
             </div>
             <div className="flex items-center gap-2.5">
               <MapPin className="w-4 h-4 text-brand-muted" />
-              <span>Paris, France</span>
+              <span>Base centrale de CodeArena</span>
             </div>
             <div className="flex items-center gap-2.5">
               <UserCheck className="w-4 h-4 text-brand-muted" />
-              <span>Membre d'élite depuis v2.4.0</span>
+              <span className="capitalize">Compte synchronisé via {user.provider}</span>
             </div>
           </div>
 
           {/* Level Progress meter */}
           <div className="w-full mt-2 text-left">
             <div className="flex justify-between items-center text-xs text-[#DAF1DE] font-bold mb-1.5 font-mono">
-              <span>Niveau {stats.level}</span>
-              <span className="text-brand-muted">{stats.totalScore % 500} / 500 XP</span>
+              <span>Niveau {user.level}</span>
+              <span className="text-brand-muted">{user.totalScore % 500} / 500 XP</span>
             </div>
             <div className="w-full bg-brand-darkest h-2 rounded-full overflow-hidden border border-brand-border/30">
               <div 
@@ -118,72 +228,162 @@ export default function ProfileView({ stats }: ProfileViewProps) {
           <div className="flex justify-between items-center mb-6">
             <h3 className="font-bold text-base text-brand-primary flex items-center gap-2">
               <Activity className="w-4 h-4 text-brand-primary" />
-              <span>Historique d'Évolution d'Arène</span>
+              <span>Graphe de Variabilité de Score BDD</span>
             </h3>
-            <span className="text-[10px] text-brand-muted font-mono uppercase tracking-wider font-bold">Variabilité score</span>
+            <span className="text-[10px] text-brand-muted font-mono uppercase tracking-wider font-bold">Base de Données V2</span>
           </div>
 
           {/* Recharts responsive layout */}
-          <div className="flex-1 min-h-[220px]" style={{ width: "100%" }}>
-            <ResponsiveContainer width="100%" height="95%">
-              <LineChart data={data}>
-                <CartesianGrid stroke="#235347" strokeDasharray="3 3" opacity={0.25} />
-                <XAxis 
-                  dataKey="name" 
-                  stroke="#8EB69B" 
-                  fontSize={10} 
-                  tickLine={false} 
-                  axisLine={false} 
-                />
-                <YAxis 
-                  stroke="#8EB69B" 
-                  fontSize={10} 
-                  tickLine={false} 
-                  axisLine={false} 
-                  domain={[0, 100]} 
-                />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: "#0B2B26", 
-                    borderColor: "#235347", 
-                    borderRadius: "8px",
-                    color: "#DAF1DE",
-                    fontFamily: "monospace",
-                    fontSize: "11px"
-                  }} 
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="score" 
-                  stroke="#DAF1DE" 
-                  strokeWidth={2.5} 
-                  dot={{ r: 4, stroke: "#051F20", strokeWidth: 1.5, fill: "#DAF1DE" }}
-                  activeDot={{ r: 6 }} 
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          {chartData.length > 0 ? (
+            <div className="flex-1 min-h-[220px]" style={{ width: "100%" }}>
+              <ResponsiveContainer width="100%" height="95%">
+                <LineChart data={chartData}>
+                  <CartesianGrid stroke="#235347" strokeDasharray="3 3" opacity={0.25} />
+                  <XAxis 
+                    dataKey="name" 
+                    stroke="#8EB69B" 
+                    fontSize={10} 
+                    tickLine={false} 
+                    axisLine={false} 
+                  />
+                  <YAxis 
+                    stroke="#8EB69B" 
+                    fontSize={10} 
+                    tickLine={false} 
+                    axisLine={false} 
+                    domain={[0, 100]} 
+                  />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: "#0B2B26", 
+                      borderColor: "#235347", 
+                      borderRadius: "8px",
+                      color: "#DAF1DE",
+                      fontFamily: "monospace",
+                      fontSize: "11px"
+                    }} 
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="score" 
+                    stroke="#DAF1DE" 
+                    strokeWidth={2.5} 
+                    dot={{ r: 4, stroke: "#051F20", strokeWidth: 1.5, fill: "#DAF1DE" }}
+                    activeDot={{ r: 6 }} 
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-xs text-zinc-500 font-mono">
+              Aucune évaluation de code sauvegardée pour l'instant. Soumettez un défi !
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Numerical Quick Counters */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 select-none font-mono text-center">
-        <div className="bg-brand-surface border border-brand-border rounded-xl p-4 hover:border-brand-muted/5 w-full">
-          <p className="text-brand-muted text-xs uppercase tracking-wider mb-2 font-bold font-sans">VIC-DUELS</p>
-          <p className="text-3xl font-extrabold text-brand-primary">{stats.wins}</p>
+      {/* Profile Settings and Preferences Form */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        
+        {/* Form panel */}
+        <div className="bg-brand-surface border border-brand-border rounded-xl p-6">
+          <h3 className="font-bold text-base text-[#DAF1DE] mb-5 flex items-center gap-2">
+            <Settings className="w-4 h-4 text-emerald-400" />
+            <span>Éditer vos informations</span>
+          </h3>
+
+          <form onSubmit={handleSaveProfile} className="flex flex-col gap-4 font-sans">
+            <div>
+              <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 font-mono">Pseudo Arène</label>
+              <input
+                type="text"
+                value={editingUsername}
+                onChange={(e) => setEditingUsername(e.target.value)}
+                className="w-full bg-[#09090b] border border-brand-border rounded-lg py-2.5 px-4 text-zinc-200 text-sm focus:outline-none focus:border-brand-primary"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 font-mono">Thème Éditeur</label>
+                <select
+                  value={editorTheme}
+                  onChange={(e) => setEditorTheme(e.target.value)}
+                  className="w-full bg-[#09090b] border border-brand-border rounded-lg py-2.5 px-3 text-zinc-200 text-sm focus:outline-none focus:border-brand-primary cursor-pointer font-mono"
+                >
+                  <option value="vs-dark">VS Dark (Default)</option>
+                  <option value="monokai">Monokai Retro</option>
+                  <option value="hc-black">High Contrast Black</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 font-mono">Modèle IA</label>
+                <select
+                  value={preferredModel}
+                  onChange={(e) => setPreferredModel(e.target.value)}
+                  className="w-full bg-[#09090b] border border-brand-border rounded-lg py-2.5 px-3 text-zinc-200 text-sm focus:outline-none focus:border-brand-primary cursor-pointer font-mono"
+                >
+                  <option value="gemini-3.5-flash">Gemini 3.5 Flash (Suggéré)</option>
+                  <option value="claude-3.5-sonnet">Claude 3.5 Sonnet</option>
+                  <option value="gpt-4o">GPT-4o Agent</option>
+                </select>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={updating}
+              className="w-full bg-emerald-500 hover:bg-emerald-600 text-black font-semibold text-xs py-3 px-4 rounded-lg uppercase tracking-wider transition-colors duration-200 active:scale-[0.98] cursor-pointer disabled:opacity-50 mt-2"
+            >
+              {updating ? "Enregistrement en cours..." : "Sauvegarder les Préférences"}
+            </button>
+          </form>
         </div>
-        <div className="bg-brand-surface border border-brand-border rounded-xl p-4 hover:border-brand-muted/5 w-full">
-          <p className="text-brand-muted text-xs uppercase tracking-wider mb-2 font-bold font-sans">DEF-DUELS</p>
-          <p className="text-3xl font-extrabold text-brand-primary">{stats.losses}</p>
+
+        {/* Numerical Quick Counters & Safe Danger zone */}
+        <div className="flex flex-col gap-6">
+          <div className="grid grid-cols-2 gap-4 text-center font-mono select-none">
+            <div className="bg-brand-surface border border-brand-border rounded-xl p-4">
+              <p className="text-brand-muted text-xs uppercase tracking-wider mb-2 font-bold font-sans">DUELS GAGNÉS</p>
+              <p className="text-3xl font-extrabold text-emerald-400">{user.wins || 0}</p>
+            </div>
+            <div className="bg-brand-surface border border-brand-border rounded-xl p-4">
+              <p className="text-brand-muted text-xs uppercase tracking-wider mb-2 font-bold font-sans">DUELS PERDUS</p>
+              <p className="text-3xl font-extrabold text-red-400">{user.losses || 0}</p>
+            </div>
+            <div className="bg-brand-surface border border-brand-border rounded-xl p-4">
+              <p className="text-brand-muted text-xs uppercase tracking-wider mb-2 font-bold font-sans font-sans">DÉFIS COMPLÉTÉS</p>
+              <p className="text-3xl font-extrabold text-[#DAF1DE]">{user.challengesDone || 0}</p>
+            </div>
+            <div className="bg-brand-surface border border-brand-border rounded-xl p-4">
+              <p className="text-brand-muted text-xs uppercase tracking-wider mb-2 font-bold font-sans">EXPÉRENCE ACQUISE</p>
+              <p className="text-3xl font-extrabold text-[#DAF1DE]">{user.totalScore || 0}</p>
+            </div>
+          </div>
+
+          {/* Danger zone to delete account */}
+          <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-5 flex items-center justify-between gap-4">
+            <div>
+              <h4 className="text-xs font-bold text-red-400 uppercase tracking-wider font-mono mb-1">Zone de danger</h4>
+              <p className="text-[11px] text-zinc-500 leading-relaxed font-medium">
+                La suppression de votre compte effacera de manière définitive toutes vos statistiques, préférences et historique d'évaluation de la base de données.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                if (confirm("Voulez-vous vraiment supprimer définitivement votre compte CodeArena ?")) {
+                  onDeleteMe();
+                }
+              }}
+              className="bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 text-xs py-2 px-3 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Supprimer compte</span>
+            </button>
+          </div>
         </div>
-        <div className="bg-brand-surface border border-brand-border rounded-xl p-4 hover:border-brand-muted/5 w-full">
-          <p className="text-brand-muted text-xs uppercase tracking-wider mb-2 font-bold font-sans">DÉFIS FAITS</p>
-          <p className="text-3xl font-extrabold text-brand-primary">{stats.challengesDone}</p>
-        </div>
-        <div className="bg-brand-surface border border-brand-border rounded-xl p-4 hover:border-brand-muted/5 w-full">
-          <p className="text-brand-muted text-xs uppercase tracking-wider mb-2 font-bold font-sans">SCORE TOTAL</p>
-          <p className="text-3xl font-extrabold text-brand-primary">{stats.totalScore}</p>
-        </div>
+
       </div>
 
       {/* Grid Achievements collection section */}

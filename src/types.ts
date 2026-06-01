@@ -51,4 +51,5 @@ export interface UserStats {
   wins: number;
   losses: number;
   recentScores: number[]; // For Recharts line charts
+  proPassUnlocked?: boolean;
 }

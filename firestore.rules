@@ -1,0 +1,126 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. GLOBAL SAFETY NET DEFAULT DENY
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. PRIMITIVE GLOBAL HELPER DEFINITIONS (HARDENED)
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(email) {
+      return isVerifiedUser() && request.auth.token.email == email;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 3. SPECIALIZED ENTITY VALIDATORS
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'username', 'email', 'level', 'totalScore'])
+        && data.keys().size() >= 5
+        && data.id is string && data.id.size() <= 128
+        && data.username is string && data.username.size() > 0 && data.username.size() <= 64
+        && data.email is string && data.email.size() <= 128
+        && data.level is int && data.level >= 1
+        && data.totalScore is int && data.totalScore >= 0;
+    }
+
+    function isValidChallengeSubmission(data) {
+      return data.keys().hasAll(['id', 'userEmail', 'challengeId', 'score', 'submittedAt'])
+        && data.keys().size() >= 5
+        && data.id is string && data.id.size() <= 128
+        && data.userEmail is string && data.userEmail.size() <= 128
+        && data.challengeId is string && data.challengeId.size() <= 128
+        && data.score is int && data.score >= 0 && data.score <= 100;
+    }
+
+    function isValidDuel(data) {
+      return data.keys().hasAll(['id', 'roomId', 'status', 'startedAt'])
+        && data.keys().size() >= 4
+        && data.id is string && data.id.size() <= 128
+        && data.roomId is string && data.roomId.size() <= 32
+        && data.status is string && (data.status == 'waiting' || data.status == 'ready' || data.status == 'coding' || data.status == 'finished');
+    }
+
+    // 4. COLLECTION INTEGRITY RULES
+
+    // Users Collection Paths
+    match /users/{userId} {
+      allow get: if isVerifiedUser();
+      allow list: if isVerifiedUser();
+
+      allow create: if isVerifiedUser()
+        && userId == request.auth.token.email
+        && isValidUser(incoming())
+        && incoming().email == request.auth.token.email;
+
+      allow update: if isVerifiedUser()
+        && userId == request.auth.token.email
+        && isValidUser(incoming())
+        && incoming().email == existing().email  // Email is immutable
+        && incoming().id == existing().id        // ID is immutable
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['username', 'preferences', 'proPassUnlocked', 'level', 'totalScore', 'challengesDone', 'wins', 'losses', 'recentScores'])
+        );
+
+      allow delete: if false;  // Server/Admin managed deletion only
+    }
+
+    // Challenges Collection Paths
+    match /challenges/{challengeId} {
+      allow get: if isVerifiedUser();
+      allow list: if isVerifiedUser() && resource.data.userEmail == request.auth.token.email;
+
+      allow create: if isVerifiedUser()
+        && isValidId(challengeId)
+        && isValidChallengeSubmission(incoming())
+        && incoming().userEmail == request.auth.token.email
+        && exists(/databases/$(database)/documents/users/$(request.auth.token.email));
+
+      allow update, delete: if false; // Complete immutability of submitted records
+    }
+
+    // Duels Matchmaking Collection Paths
+    match /duels/{duelId} {
+      allow get: if isVerifiedUser();
+      allow list: if isVerifiedUser();
+
+      allow create: if isVerifiedUser()
+        && isValidId(duelId)
+        && isValidDuel(incoming())
+        && incoming().status == 'waiting';
+
+      allow update: if isVerifiedUser()
+        && isValidDuel(incoming())
+        && existing().status != 'finished' // Cannot update terminal state once complete
+        && (
+          // Action 1: Peer joins the lobby
+          (existing().status == 'waiting' && incoming().status == 'ready' && incoming().diff(existing()).affectedKeys().hasAny(['player2', 'status']))
+          ||
+          // Action 2: Progressing through active games or resolving winners
+          (incoming().diff(existing()).affectedKeys().hasAny(['status', 'winnerEmail']))
+        );
+
+      allow delete: if false;
+    }
+  }
+}

@@ -5,9 +5,10 @@ interface HeaderProps {
   onSearchChange?: (val: string) => void;
   onGoProClick?: () => void;
   openSettings?: () => void;
+  proPassUnlocked?: boolean;
 }
 
-export default function Header({ onSearchChange, onGoProClick, openSettings }: HeaderProps) {
+export default function Header({ onSearchChange, onGoProClick, openSettings, proPassUnlocked }: HeaderProps) {
   const [searchValue, setSearchValue] = useState("");
   const [showNotificationModal, setShowNotificationModal] = useState(false);
 
@@ -58,13 +59,20 @@ export default function Header({ onSearchChange, onGoProClick, openSettings }: H
       {/* Trailing actions */}
       <div className="flex items-center gap-4 relative">
         {/* Go Pro Premium CTA */}
-        <button 
-          onClick={onGoProClick}
-          className="px-4 py-2 border border-emerald-900/50 bg-emerald-500/10 text-emerald-400 text-xs font-semibold rounded uppercase tracking-tighter hover:bg-emerald-500/15 transition-all text-xs active:scale-95 flex items-center gap-1.5 cursor-pointer"
-        >
-          <Award className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Passer Pro</span>
-        </button>
+        {proPassUnlocked ? (
+          <div className="px-4 py-2 border border-emerald-500 bg-emerald-500/20 text-[#DAF1DE] text-xs font-bold rounded uppercase tracking-tighter flex items-center gap-1.5 shadow-[0_0_10px_rgba(16,185,129,0.3)] select-none">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-400 animate-pulse animate-bounce" />
+            <span>Élite Pro Actif</span>
+          </div>
+        ) : (
+          <button 
+            onClick={onGoProClick}
+            className="px-4 py-2 border border-emerald-900/50 bg-emerald-500/10 text-emerald-400 text-xs font-semibold rounded uppercase tracking-tighter hover:bg-emerald-500/15 transition-all text-xs active:scale-95 flex items-center gap-1.5 cursor-pointer"
+          >
+            <Award className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Passer Pro</span>
+          </button>
+        )}
 
         {/* Notifications */}
         <button

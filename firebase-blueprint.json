@@ -1,0 +1,159 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Information about a registered player on CodeArena, including historical statistics and customized preferences.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the user matches their email base id."
+        },
+        "username": {
+          "type": "string",
+          "description": "The custom display name chosen by the user."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Primary verified email address."
+        },
+        "avatar": {
+          "type": "string",
+          "description": "URL to the user's avatar image."
+        },
+        "level": {
+          "type": "integer",
+          "description": "Current player level computed from XP score."
+        },
+        "totalScore": {
+          "type": "integer",
+          "description": "Total compilation and algorithmic XP accumulated."
+        },
+        "challengesDone": {
+          "type": "integer",
+          "description": "Total number of challenges evaluated on CodeArena."
+        },
+        "wins": {
+          "type": "integer",
+          "description": "Total number of dynamic duel match victories."
+        },
+        "losses": {
+          "type": "integer",
+          "description": "Total number of duel match losses."
+        },
+        "proPassUnlocked": {
+          "type": "boolean",
+          "description": "Determines whether premium ligue status has been activated."
+        },
+        "provider": {
+          "type": "string",
+          "description": "The login provider type (e.g. google, github)."
+        }
+      },
+      "required": [
+        "id",
+        "username",
+        "email",
+        "level",
+        "totalScore"
+      ]
+    },
+    "ChallengeSubmission": {
+      "title": "ChallengeSubmission",
+      "description": "The history and structured evaluation output score from a challenge solution attempt.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique evaluation run id."
+        },
+        "userEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "The email of the player submitting the solution."
+        },
+        "challengeId": {
+          "type": "string",
+          "description": "Unique code for the source challenge card."
+        },
+        "title": {
+          "type": "string",
+          "description": "The challenge title."
+        },
+        "level": {
+          "type": "string",
+          "description": "The difficulty level (Easy, Medium, Advanced)."
+        },
+        "score": {
+          "type": "integer",
+          "description": "Overall score on a scale of 0-100."
+        },
+        "globalFeedback": {
+          "type": "string",
+          "description": "The general feedback in French from the Gemini AI."
+        },
+        "submittedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The precise datetime of evaluation."
+        }
+      },
+      "required": [
+        "id",
+        "userEmail",
+        "challengeId",
+        "score",
+        "submittedAt"
+      ]
+    },
+    "Duel": {
+      "title": "Duel",
+      "description": "Dynamic online competitive play arena lobby status.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique dueling lobby ID."
+        },
+        "roomId": {
+          "type": "string",
+          "description": "The human-readable Room ID code used for joining."
+        },
+        "status": {
+          "type": "string",
+          "description": " Lobbies can be waiting, ready, coding or finished."
+        },
+        "winnerEmail": {
+          "type": "string",
+          "description": "Email address of the winning player if finished."
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The exact creation and timestamp."
+        }
+      },
+      "required": [
+        "id",
+        "roomId",
+        "status",
+        "startedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User account collection identified by document email context."
+    },
+    "challenges/{challengeId}": {
+      "schema": "ChallengeSubmission",
+      "description": "History of challenge attempts and automated Gemini evaluation marks."
+    },
+    "duels/{duelId}": {
+      "schema": "Duel",
+      "description": "Competitive arena duel matchmaking sessions."
+    }
+  }
+}

@@ -21,9 +21,11 @@ import { Challenge, ChatMessage } from "../types";
 interface ChallengesViewProps {
   onStartChallenge: (challenge: Challenge) => void;
   onCodeEvaluated: (score: number) => void;
+  proPassUnlocked?: boolean;
+  onGoProClick?: () => void;
 }
 
-export default function ChallengesView({ onStartChallenge, onCodeEvaluated }: ChallengesViewProps) {
+export default function ChallengesView({ onStartChallenge, onCodeEvaluated, proPassUnlocked, onGoProClick }: ChallengesViewProps) {
   // Navigation inside view: "select" or "active_session"
   const [viewState, setViewState] = useState<"select" | "active_session">("select");
   const [activeChallenge, setActiveChallenge] = useState<Challenge | null>(null);
@@ -32,6 +34,7 @@ export default function ChallengesView({ onStartChallenge, onCodeEvaluated }: Ch
   const [selectedDifficulty, setSelectedDifficulty] = useState<"Débutant" | "Intermédiaire" | "Avancé">("Intermédiaire");
   const [selectedCategory, setSelectedCategory] = useState<"React" | "Rust" | "Python" | "JavaScript">("React");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState("");
 
   // Active challenge session states
   const [challengeFiles, setChallengeFiles] = useState<Record<string, string>>({});
@@ -149,17 +152,24 @@ def stabilize_qubit(quantum_register):
   ];
 
   // Dynamic generate challenge over Express backend
-  const handleGenerateCustomChallenge = async () => {
+  const handleGenerateCustomChallenge = async (useCustomPrompt?: boolean) => {
     setIsGenerating(true);
     try {
       const response = await fetch("/api/challenges/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ level: selectedDifficulty, category: selectedCategory })
+        body: JSON.stringify({ 
+          level: selectedDifficulty, 
+          category: selectedCategory,
+          customPrompt: useCustomPrompt ? customPrompt.trim() : undefined
+        })
       });
       const data = await response.json();
       
       onStartChallengeSession(data);
+      if (useCustomPrompt) {
+        setCustomPrompt("");
+      }
     } catch (e) {
       console.error(e);
       // Fallback
@@ -360,6 +370,84 @@ def stabilize_qubit(quantum_register):
               </button>
             </div>
           </div>
+
+          {/* PASS PRO D'ÉLITE: GÉNÉRATEUR PAR PROMPT IA */}
+          {proPassUnlocked ? (
+            <div className="mb-10 bg-gradient-to-r from-[#0b2b26] to-[#04191a] border-2 border-emerald-500/80 rounded-2xl p-6 shadow-[0_0_15px_rgba(16,185,129,0.15)] flex flex-col gap-4 relative">
+              <div className="absolute top-4 right-4 bg-emerald-500/10 text-emerald-400 text-[10px] font-black uppercase px-2.5 py-1 rounded border border-emerald-500/30 font-mono tracking-widest animate-pulse">
+                ★ FONCTIONNALITÉ PRO ACTIVE_
+              </div>
+              <div className="flex items-center gap-3">
+                <Sparkles className="w-5 h-5 text-emerald-400 rotate-12" />
+                <div>
+                  <h4 className="text-sm font-bold text-[#DAF1DE]">Générateur d'Algorithmes par invite IA</h4>
+                  <p className="text-xs text-zinc-400 leading-normal">Décrivez n'importe quel concept, sujet ou problème technique pour générer un défi CodeArena jouable instantanément.</p>
+                </div>
+              </div>
+              
+              <div className="flex flex-col md:flex-row gap-3 mt-1">
+                <input
+                  type="text"
+                  value={customPrompt}
+                  onChange={(e) => setCustomPrompt(e.target.value)}
+                  placeholder="Ex: Établir un algorithme de compression de Huffman intégrant un transfo de Fourier rapide..."
+                  className="flex-grow bg-[#051f20] border border-emerald-500/30 rounded-xl px-4 py-3 text-xs text-[#DAF1DE] placeholder-[#8EB69B]/50 focus:outline-none focus:border-emerald-500 transition-all font-sans"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && customPrompt.trim()) {
+                      handleGenerateCustomChallenge(true);
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    if (!customPrompt.trim()) return;
+                    handleGenerateCustomChallenge(true);
+                  }}
+                  disabled={isGenerating || !customPrompt.trim()}
+                  className="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-brand-darkest font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all w-full md:w-auto shrink-0 select-none shadow-[0_0_10px_rgba(16,185,129,0.4)]"
+                >
+                  {isGenerating ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Send className="w-3.5 h-3.5" />
+                  )}
+                  <span>Générer avec l'IA</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-10 bg-[#121214]/60 border border-[#27272a] rounded-2xl p-6 relative overflow-hidden backdrop-blur-md">
+              <div className="absolute inset-0 bg-[#000]/65 flex flex-col justify-center items-center z-10 p-6 text-center">
+                <div className="p-2.5 bg-[#0b2b26] border border-emerald-500/30 rounded-full mb-3 text-emerald-400">
+                  <Sparkles className="w-5 h-5 text-emerald-400" />
+                </div>
+                <h4 className="text-sm font-bold text-zinc-100 flex items-center gap-1.5 uppercase font-sans">
+                  Débloquer le Générateur d'Algorithmes par invite
+                </h4>
+                <p className="text-xs text-zinc-400 mt-1 mb-4 max-w-sm font-medium leading-normal">
+                  Activez votre **Pass Pro d'Élite** pour générer des défis algorithmiques illimités par invite de prompt naturel et les exécuter.
+                </p>
+                <button 
+                  onClick={onGoProClick}
+                  className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-xs rounded-xl cursor-pointer shadow-[0_0_12px_rgba(16,185,129,0.3)] transition-all active:scale-95 uppercase tracking-wide"
+                >
+                  Activer le Pass Pro Gratuitement
+                </button>
+              </div>
+              
+              {/* Blurred preview container */}
+              <div className="filter blur-md select-none pointer-events-none opacity-20 flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-5 h-5 bg-zinc-700 rounded-full"></div>
+                  <div className="h-4 bg-zinc-700 w-48 rounded"></div>
+                </div>
+                <div className="flex gap-3">
+                  <div className="h-10 bg-zinc-800 rounded-xl flex-grow"></div>
+                  <div className="h-10 bg-zinc-800 rounded-xl w-32"></div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Bento grid challenges display (exactly mirroring the prompt screenshots) */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
