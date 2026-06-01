@@ -22,6 +22,7 @@ import ChallengesView from "./components/ChallengesView";
 import ProfileView from "./components/ProfileView";
 import DuelsView from "./components/DuelsView";
 import LeaderboardView from "./components/LeaderboardView";
+import LandingView from "./components/LandingView";
 import { auth } from "./firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -29,7 +30,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { Challenge, Project, UserStats } from "./types";
 
 export default function App() {
-  const [currentTab, setTab] = useState<string>("home");
+  const [currentTab, setTab] = useState<string>("landing");
 
   // Dynamic user session state (Phase V2 Database)
   const [user, setUser] = useState<any | null>(null);
@@ -68,6 +69,13 @@ export default function App() {
 
     return () => unsubscribe();
   }, []);
+
+  // Redirection automatique des utilisateurs non connectés vers la landing page sécurisée
+  useEffect(() => {
+    if (!user && currentTab !== "landing") {
+      setTab("landing");
+    }
+  }, [user, currentTab]);
 
   const loadUserProfile = async () => {
     try {
@@ -330,26 +338,49 @@ if __name__ == "__main__":
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-brand-darkest select-none">
       
-      {/* Lateral navigation menu */}
-      <Sidebar 
-        currentTab={currentTab} 
-        setTab={setTab} 
-        onNewProject={() => setShowNewProjectModal(true)} 
-        user={user}
-        onAuthClick={() => setTab("profile")}
-      />
+      {/* Lateral navigation menu - visible uniquement si connecté */}
+      {user && (
+        <Sidebar 
+          currentTab={currentTab} 
+          setTab={setTab} 
+          onNewProject={() => setShowNewProjectModal(true)} 
+          user={user}
+          onAuthClick={() => setTab("profile")}
+        />
+      )}
 
       {/* Main frame workspace layout */}
       <div className="flex-1 flex flex-col min-w-0 h-full relative">
-        <Header 
-          onGoProClick={() => setShowPremiumModal(true)} 
-          openSettings={() => setShowSettingsModal(true)}
-          proPassUnlocked={userStats.proPassUnlocked}
-        />
+        {user && (
+          <Header 
+            onGoProClick={() => setShowPremiumModal(true)} 
+            openSettings={() => setShowSettingsModal(true)}
+            proPassUnlocked={userStats.proPassUnlocked}
+          />
+        )}
 
         {/* Dynamic content renders inside interactive animate presences */}
         <div className="flex-grow min-h-0 relative flex flex-col">
           <AnimatePresence mode="wait">
+            {currentTab === "landing" && (
+              <motion.div 
+                key="landing"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.18 }}
+                className="flex-1 flex flex-col overflow-hidden"
+              >
+                <LandingView 
+                  onEnterArena={(tab) => setTab(tab)}
+                  user={user}
+                  onAuthClick={() => {
+                    setTab("profile");
+                  }}
+                />
+              </motion.div>
+            )}
+
             {currentTab === "home" && (
               <motion.div 
                 key="home"

@@ -10,7 +10,8 @@ import {
   HelpCircle, 
   BookOpen,
   Award,
-  LogIn
+  LogIn,
+  Sparkles
 } from "lucide-react";
 
 interface SidebarProps {
@@ -22,13 +23,19 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ currentTab, setTab, onNewProject, user, onAuthClick }: SidebarProps) {
-  const menuItems = [
+  const menuItems = user ? [
+    { id: "landing", label: "Cosmos", icon: Sparkles },
     { id: "home", label: "Accueil", icon: Home },
     { id: "editor", label: "Éditeur", icon: Code },
     { id: "challenges", label: "Défis", icon: Trophy },
     { id: "leaderboard", label: "Classement", icon: Award },
     { id: "profile", label: "Profil", icon: User },
     { id: "duels", label: "Duels", icon: Zap },
+  ] : [
+    { id: "landing", label: "Cosmos", icon: Sparkles },
+    { id: "home", label: "Accueil", icon: Home },
+    { id: "challenges", label: "Défis", icon: Trophy },
+    { id: "leaderboard", label: "Classement", icon: Award },
   ];
 
   const getInitials = (name: string) => {
