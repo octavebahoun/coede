@@ -1,3 +1,4 @@
+import { auth } from "../firebase";
 import React, { useState, useEffect } from "react";
 import { Award, Trophy, Users, Search, Target, Flame, RefreshCw } from "lucide-react";
 
@@ -24,7 +25,10 @@ export default function LeaderboardView({ currentUserEmail }: LeaderboardViewPro
   const fetchLeaderboard = async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/users/leaderboard");
+      const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
+      const response = await fetch("/api/users/leaderboard", {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
       if (response.ok) {
         const data = await response.json();
         setUsers(data);
