@@ -1,3 +1,4 @@
+import { authFetch } from "../utils/api";
 import React, { useState, useEffect, useRef } from "react";
 import { 
   Trophy, 
@@ -155,7 +156,7 @@ def stabilize_qubit(quantum_register):
   const handleGenerateCustomChallenge = async (useCustomPrompt?: boolean) => {
     setIsGenerating(true);
     try {
-      const response = await fetch("/api/challenges/generate", {
+      const response = await authFetch("/api/challenges/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -226,7 +227,7 @@ def stabilize_qubit(quantum_register):
     setTimerActive(false);
 
     try {
-      const response = await fetch("/api/challenges/evaluate", {
+      const response = await authFetch("/api/challenges/evaluate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ challenge: activeChallenge, userFiles: challengeFiles })
@@ -268,7 +269,7 @@ def stabilize_qubit(quantum_register):
     setCoachLoading(true);
 
     try {
-      const response = await fetch("/api/chat", {
+      const response = await authFetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

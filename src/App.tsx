@@ -1,3 +1,4 @@
+import { authFetch } from "./utils/api";
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -40,7 +41,7 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          const res = await fetch("/auth/login", {
+          const res = await authFetch("/auth/login", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -59,7 +60,7 @@ export default function App() {
         }
       } else {
         try {
-          await fetch("/auth/logout", { method: "POST" });
+          await authFetch("/auth/logout", { method: "POST" });
         } catch (err) {
           console.warn("Erreur de déconnexion globale", err);
         }
@@ -81,7 +82,7 @@ export default function App() {
 
   const loadUserProfile = async () => {
     try {
-      const response = await fetch("/auth/me");
+      const response = await authFetch("/auth/me");
       if (response.ok) {
         const u = await response.json();
         setUser(u);
@@ -104,7 +105,7 @@ export default function App() {
 
   const handleUpdateMe = async (updates: { username?: string; preferences?: any }) => {
     try {
-      const res = await fetch("/api/users/me", {
+      const res = await authFetch("/api/users/me", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates)
@@ -119,7 +120,7 @@ export default function App() {
 
   const handleDeleteMe = async () => {
     try {
-      await fetch("/api/users/me", { method: "DELETE" });
+      await authFetch("/api/users/me", { method: "DELETE" });
       setUser(null);
       setTab("home");
     } catch (err) {
@@ -204,7 +205,7 @@ if __name__ == "__main__":
       });
       // also set it directly
       try {
-        await fetch("/api/users/me", {
+        await authFetch("/api/users/me", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ proPassUnlocked: true })
@@ -279,7 +280,7 @@ if __name__ == "__main__":
       const newTotal = user.totalScore + addedScore;
       const newLevel = Math.floor(newTotal / 500) + 1;
       try {
-        await fetch("/api/users/me", {
+        await authFetch("/api/users/me", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -295,7 +296,7 @@ if __name__ == "__main__":
         user.level = Math.floor(user.totalScore / 500) + 1;
         user.recentScores.push(95);
         
-        await fetch("/api/users/me", {
+        await authFetch("/api/users/me", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(user)
@@ -315,7 +316,7 @@ if __name__ == "__main__":
         user.level = Math.floor(user.totalScore / 500) + 1;
         user.recentScores.push(65);
         
-        await fetch("/api/users/me", {
+        await authFetch("/api/users/me", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(user)

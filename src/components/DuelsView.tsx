@@ -1,3 +1,4 @@
+import { authFetch } from "../utils/api";
 import React, { useState, useEffect, useRef } from "react";
 import { 
   Zap, 
@@ -79,7 +80,7 @@ export default function DuelsView({ user, onDuelWin, onDuelLoss }: DuelsProps) {
     setLogTicks(prev => [...prev, "[16:19:42] Lancement de la file de sélection... Recherche d'un adversaire..."]);
     setErrorAlert(null);
     try {
-      const res = await fetch("/api/duels/create", {
+      const res = await authFetch("/api/duels/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" }
       });
@@ -111,7 +112,7 @@ export default function DuelsView({ user, onDuelWin, onDuelLoss }: DuelsProps) {
     setErrorAlert(null);
     setLogTicks(prev => [...prev, `[HTTP] Recherche du salon #${joinRoomInput}...`]);
     try {
-      const res = await fetch("/api/duels/join", {
+      const res = await authFetch("/api/duels/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ roomId: joinRoomInput.trim() })
@@ -154,7 +155,7 @@ export default function DuelsView({ user, onDuelWin, onDuelLoss }: DuelsProps) {
 
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/duels/${roomCode}`);
+        const res = await authFetch(`/api/duels/${roomCode}`);
         if (res.ok) {
           const updatedLobby = await res.json();
           setRoomModel(updatedLobby);
@@ -240,7 +241,7 @@ export default function DuelsView({ user, onDuelWin, onDuelLoss }: DuelsProps) {
     setIsChatLoading(true);
 
     try {
-      const response = await fetch("/api/opponent/chat", {
+      const response = await authFetch("/api/opponent/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -319,7 +320,7 @@ function solveGraphPath(nodes, origin) {
     setUserSubmitted(true);
 
     try {
-      const response = await fetch("/api/challenges/evaluate", {
+      const response = await authFetch("/api/challenges/evaluate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

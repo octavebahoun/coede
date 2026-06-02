@@ -29,16 +29,23 @@ function getGemini(): GoogleGenAI {
 // ================= FIREBASE FIRESTORE DATABASE INITIALIZATION =================
 import admin from "firebase-admin";
 
-let currentLoggedInUserEmail = "teamexecellence@gmail.com"; // Default premium user matching metadata!
-
 const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf8"));
 
 if (admin.apps.length === 0) {
   admin.initializeApp({
-    projectId: firebaseConfig.projectId
+    projectId: firebaseConfig.projectId,
+    // Workaround sandbox dev environment default credentials issue by providing dummy bypasses
+    credential: admin.credential.applicationDefault()
   });
 }
 const db = admin.firestore();
+// Sandbox mock db bypassing for testing env only in dev
+if (process.env.NODE_ENV !== "production") {
+  db.settings({
+      host: "localhost:8080",
+      ssl: false
+  });
+}
 
 enum OperationType {
   CREATE = "create",
@@ -66,12 +73,12 @@ interface FirestoreErrorInfo {
   }
 }
 
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null, userEmail?: string) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
-      userId: currentLoggedInUserEmail,
-      email: currentLoggedInUserEmail,
+      userId: userEmail || null,
+      email: userEmail || null,
       emailVerified: true,
       isAnonymous: false,
       tenantId: null,
@@ -84,9 +91,9 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
-function respondWithFirestoreError(res: any, error: unknown, operationType: OperationType, path: string | null) {
+function respondWithFirestoreError(res: any, error: unknown, operationType: OperationType, path: string | null, userEmail?: string) {
   try {
-    handleFirestoreError(error, operationType, path);
+    handleFirestoreError(error, operationType, path, userEmail);
   } catch (err: any) {
     res.status(500).setHeader("Content-Type", "application/json").send(err.message);
   }
@@ -186,6 +193,38 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  // Middleware d'authentification Firebase
+  const authenticateUser = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Unauthorized: Missing or invalid token" });
+    }
+
+    const idToken = authHeader.split("Bearer ")[1];
+    try {
+      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      (req as any).user = decodedToken;
+      next();
+    } catch (error) {
+      console.error("Erreur de vérification du token Firebase:", error);
+      return res.status(401).json({ error: "Unauthorized: Invalid token" });
+    }
+  };
+
+  const authenticateUserOptional = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const idToken = authHeader.split("Bearer ")[1];
+      try {
+        const decodedToken = await admin.auth().verifyIdToken(idToken);
+        (req as any).user = decodedToken;
+      } catch (error) {
+        // Optionnel, on ignore l'erreur si le token est invalide
+      }
+    }
+    next();
+  };
+
   // API Route - Firebase Client Credentials Config
   app.get("/api/firebase-config", (_req, res) => {
     res.json({
@@ -202,40 +241,40 @@ async function startServer() {
   // ================= AUTHENTICATION ENDPOINTS (V2 SPEC) =================
   
   // GET /auth/me - Retourne le profil utilisateur connecté
-  app.get("/auth/me", async (req, res) => {
-    if (!currentLoggedInUserEmail) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+  app.get("/auth/me", authenticateUser, async (req, res) => {
+    const userEmail = (req as any).user.email;
     try {
-      const userRef = db.collection("users").doc(currentLoggedInUserEmail);
+      const userRef = db.collection("users").doc(userEmail);
       const userSnap = await userRef.get();
       if (!userSnap.exists) {
         return res.status(401).json({ error: "User not found" });
       }
       res.json(userSnap.data());
     } catch (error) {
-      respondWithFirestoreError(res, error, OperationType.GET, `users/${currentLoggedInUserEmail}`);
+      respondWithFirestoreError(res, error, OperationType.GET, `users/${userEmail}`, userEmail);
     }
   });
 
   // POST /auth/login - Gère l'authentification simulation OAuth 2.0 (Google et GitHub)
-  app.post("/auth/login", async (req, res) => {
-    const { email, username, avatar, provider } = req.body;
-    if (!email) {
-      return res.status(400).json({ error: "Missing email" });
+  app.post("/auth/login", authenticateUser, async (req, res) => {
+    const { username, avatar, provider } = req.body;
+    const userEmail = (req as any).user.email;
+
+    if (!userEmail) {
+      return res.status(400).json({ error: "No email in token" });
     }
 
     try {
-      const userRef = db.collection("users").doc(email);
+      const userRef = db.collection("users").doc(userEmail);
       const userSnap = await userRef.get();
       let userData: any = null;
 
       if (!userSnap.exists) {
         userData = {
           id: "user-" + Date.now().toString(36),
-          username: username || email.split("@")[0],
-          email: email,
-          avatar: avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${email}`,
+          username: username || userEmail.split("@")[0],
+          email: userEmail,
+          avatar: avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${userEmail}`,
           level: 1,
           totalScore: 0,
           challengesDone: 0,
@@ -256,16 +295,14 @@ async function startServer() {
         userData = userSnap.data();
       }
 
-      currentLoggedInUserEmail = email;
       res.json({ success: true, user: userData });
     } catch (error) {
-      respondWithFirestoreError(res, error, OperationType.WRITE, `users/${email}`);
+      respondWithFirestoreError(res, error, OperationType.WRITE, `users/${userEmail}`, userEmail);
     }
   });
 
   // POST /auth/logout - Déconnexion
-  app.post("/auth/logout", (req, res) => {
-    currentLoggedInUserEmail = "";
+  app.post("/auth/logout", authenticateUser, (req, res) => {
     res.json({ success: true });
   });
 
@@ -325,13 +362,11 @@ async function startServer() {
   });
 
   // PUT /api/users/me - Mise à jour du profil (préférences, pseudo)
-  app.put("/api/users/me", async (req, res) => {
-    if (!currentLoggedInUserEmail) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+  app.put("/api/users/me", authenticateUser, async (req, res) => {
+    const userEmail = (req as any).user.email;
     const body = req.body;
     try {
-      const userRef = db.collection("users").doc(currentLoggedInUserEmail);
+      const userRef = db.collection("users").doc(userEmail);
       const userSnap = await userRef.get();
       if (!userSnap.exists) {
         return res.status(404).json({ error: "User not found" });
@@ -354,22 +389,19 @@ async function startServer() {
       await userRef.set(updatedUser);
       res.json({ success: true, user: updatedUser });
     } catch (error) {
-      respondWithFirestoreError(res, error, OperationType.WRITE, `users/${currentLoggedInUserEmail}`);
+      respondWithFirestoreError(res, error, OperationType.WRITE, `users/${userEmail}`, userEmail);
     }
   });
 
   // DELETE /api/users/me - Suppression du compte
-  app.delete("/api/users/me", async (req, res) => {
-    if (!currentLoggedInUserEmail) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+  app.delete("/api/users/me", authenticateUser, async (req, res) => {
+    const userEmail = (req as any).user.email;
     try {
-      const userRef = db.collection("users").doc(currentLoggedInUserEmail);
+      const userRef = db.collection("users").doc(userEmail);
       await userRef.delete();
-      currentLoggedInUserEmail = "";
       res.json({ success: true });
     } catch (error) {
-      respondWithFirestoreError(res, error, OperationType.DELETE, `users/${currentLoggedInUserEmail}`);
+      respondWithFirestoreError(res, error, OperationType.DELETE, `users/${userEmail}`, userEmail);
     }
   });
 
@@ -485,7 +517,7 @@ Génère le JSON exactement selon le schéma spécifié. Rends les fichiers d'ar
   });
 
   // API Route - Evaluate Code using Gemini and save results to Database (V2)
-  app.post("/api/challenges/evaluate", async (req, res) => {
+  app.post("/api/challenges/evaluate", authenticateUserOptional, async (req, res) => {
     const { challenge, userFiles } = req.body;
     const hasKey = !!process.env.GEMINI_API_KEY;
     let evalOutput: any = null;
@@ -554,9 +586,10 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
     }
 
     // Save submission to database and update user stats in BDD (Phase V2 requirement!)
-    if (currentLoggedInUserEmail) {
+    const userEmail = (req as any).user?.email;
+    if (userEmail) {
       try {
-        const userRef = db.collection("users").doc(currentLoggedInUserEmail);
+        const userRef = db.collection("users").doc(userEmail);
         const userSnap = await userRef.get();
         if (userSnap.exists) {
           const user = userSnap.data() || {};
@@ -576,7 +609,7 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
         const challengeRef = db.collection("challenges").doc(subId);
         await challengeRef.set({
           id: subId,
-          userEmail: currentLoggedInUserEmail,
+          userEmail: userEmail,
           challengeId: challengeId,
           title: challenge?.title || "Défi Personnalisé",
           level: challenge?.level || "Intermédiaire",
@@ -588,7 +621,7 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
 
       } catch (error) {
         try {
-          handleFirestoreError(error, OperationType.WRITE, "challenges");
+          handleFirestoreError(error, OperationType.WRITE, "challenges", userEmail);
         } catch (e) {
           console.error("Failed to persist challenge submission in background:", e);
         }
@@ -599,28 +632,23 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
   });
 
   // POST /api/challenges/submit - Identique à evaluate, mais soumet formellement (V2 spec match)
-  app.post("/api/challenges/submit", async (req, res) => {
-    if (!currentLoggedInUserEmail) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+  app.post("/api/challenges/submit", authenticateUser, async (req, res) => {
     // Appel direct de l'évaluation
     return res.redirect(307, "/api/challenges/evaluate");
   });
 
   // GET /api/challenges/history - Récupère l'historique des défis résolus de l'utilisateur
-  app.get("/api/challenges/history", async (req, res) => {
-    if (!currentLoggedInUserEmail) {
-      return res.status(200).json([]); // Tableau vide si non identifié
-    }
+  app.get("/api/challenges/history", authenticateUser, async (req, res) => {
+    const userEmail = (req as any).user.email;
     try {
-      const querySnap = await db.collection("challenges").where("userEmail", "==", currentLoggedInUserEmail).get();
+      const querySnap = await db.collection("challenges").where("userEmail", "==", userEmail).get();
       const history: any[] = [];
       querySnap.forEach((doc) => {
         history.push(doc.data());
       });
       res.json(history);
     } catch (error) {
-      respondWithFirestoreError(res, error, OperationType.LIST, "challenges");
+      respondWithFirestoreError(res, error, OperationType.LIST, "challenges", userEmail);
     }
   });
 
@@ -648,12 +676,10 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
   // ================= DUELS MATCHMAKING ENDPOINTS (V2/V3 SPEC) =================
 
   // POST /api/duels/create - Crée un salon de duel
-  app.post("/api/duels/create", async (req, res) => {
-    if (!currentLoggedInUserEmail) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+  app.post("/api/duels/create", authenticateUser, async (req, res) => {
+    const userEmail = (req as any).user.email;
     try {
-      const userRef = db.collection("users").doc(currentLoggedInUserEmail);
+      const userRef = db.collection("users").doc(userEmail);
       const userSnap = await userRef.get();
       if (!userSnap.exists) {
         return res.status(404).json({ error: "User profile not found" });
@@ -690,15 +716,13 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
       await db.collection("duels").doc(duelId).set(lobby);
       res.json(lobby);
     } catch (error) {
-      respondWithFirestoreError(res, error, OperationType.WRITE, "duels");
+      respondWithFirestoreError(res, error, OperationType.WRITE, "duels", userEmail);
     }
   });
 
   // POST /api/duels/join - Rejoindre un salon de duel existant
-  app.post("/api/duels/join", async (req, res) => {
-    if (!currentLoggedInUserEmail) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+  app.post("/api/duels/join", authenticateUser, async (req, res) => {
+    const userEmail = (req as any).user.email;
     const { roomId } = req.body;
     if (!roomId) {
       return res.status(400).json({ error: "Missing roomId" });
@@ -715,7 +739,7 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
       const duelDoc = querySnap.docs[0];
       const matchData = duelDoc.data();
 
-      const userRef = db.collection("users").doc(currentLoggedInUserEmail);
+      const userRef = db.collection("users").doc(userEmail);
       const userSnap = await userRef.get();
       if (!userSnap.exists) {
         return res.status(404).json({ error: "User profile not found" });
@@ -733,7 +757,7 @@ Rassemble les résultats sous forme de critères clairs et renvoie un retour con
       await db.collection("duels").doc(matchData.id).set(matchData);
       res.json(matchData);
     } catch (error) {
-      respondWithFirestoreError(res, error, OperationType.WRITE, "duels");
+      respondWithFirestoreError(res, error, OperationType.WRITE, "duels", userEmail);
     }
   });
 

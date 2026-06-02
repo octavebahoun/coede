@@ -1,3 +1,4 @@
+import { authFetch } from "../utils/api";
 import React, { useState, useEffect, useRef } from "react";
 import { 
   FolderOpen, 
@@ -111,7 +112,7 @@ export default function EditorView({ activeProject, onSaveFiles }: EditorViewPro
     }
 
     try {
-      const response = await fetch("/api/execute", {
+      const response = await authFetch("/api/execute", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

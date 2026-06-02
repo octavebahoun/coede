@@ -1,3 +1,4 @@
+import { authFetch } from "../utils/api";
 import React, { useState, useEffect } from "react";
 import { Award, Trophy, Users, Search, Target, Flame, RefreshCw } from "lucide-react";
 
@@ -24,7 +25,7 @@ export default function LeaderboardView({ currentUserEmail }: LeaderboardViewPro
   const fetchLeaderboard = async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/users/leaderboard");
+      const response = await authFetch("/api/users/leaderboard");
       if (response.ok) {
         const data = await response.json();
         setUsers(data);
