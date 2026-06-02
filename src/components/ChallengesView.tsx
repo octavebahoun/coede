@@ -1,3 +1,4 @@
+import { auth } from "../firebase";
 import React, { useState, useEffect, useRef } from "react";
 import { 
   Trophy, 
@@ -155,9 +156,10 @@ def stabilize_qubit(quantum_register):
   const handleGenerateCustomChallenge = async (useCustomPrompt?: boolean) => {
     setIsGenerating(true);
     try {
+      const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
       const response = await fetch("/api/challenges/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ 
           level: selectedDifficulty, 
           category: selectedCategory,
@@ -226,9 +228,10 @@ def stabilize_qubit(quantum_register):
     setTimerActive(false);
 
     try {
+      const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
       const response = await fetch("/api/challenges/evaluate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ challenge: activeChallenge, userFiles: challengeFiles })
       });
       
@@ -268,9 +271,10 @@ def stabilize_qubit(quantum_register):
     setCoachLoading(true);
 
     try {
+      const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({
           message: userText,
           challenge: activeChallenge,

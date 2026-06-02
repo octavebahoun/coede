@@ -1,3 +1,4 @@
+import { auth } from "../firebase";
 import React, { useState, useEffect, useRef } from "react";
 import { 
   Zap, 
@@ -79,9 +80,10 @@ export default function DuelsView({ user, onDuelWin, onDuelLoss }: DuelsProps) {
     setLogTicks(prev => [...prev, "[16:19:42] Lancement de la file de sélection... Recherche d'un adversaire..."]);
     setErrorAlert(null);
     try {
+      const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
       const res = await fetch("/api/duels/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" }
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
       });
       if (res.ok) {
         const lobby = await res.json();
@@ -111,9 +113,10 @@ export default function DuelsView({ user, onDuelWin, onDuelLoss }: DuelsProps) {
     setErrorAlert(null);
     setLogTicks(prev => [...prev, `[HTTP] Recherche du salon #${joinRoomInput}...`]);
     try {
+      const token2 = auth.currentUser ? await auth.currentUser.getIdToken() : "";
       const res = await fetch("/api/duels/join", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token2}` },
         body: JSON.stringify({ roomId: joinRoomInput.trim() })
       });
       if (res.ok) {
@@ -154,7 +157,10 @@ export default function DuelsView({ user, onDuelWin, onDuelLoss }: DuelsProps) {
 
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/duels/${roomCode}`);
+        const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
+        const res = await fetch(`/api/duels/${roomCode}`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
         if (res.ok) {
           const updatedLobby = await res.json();
           setRoomModel(updatedLobby);
@@ -240,9 +246,10 @@ export default function DuelsView({ user, onDuelWin, onDuelLoss }: DuelsProps) {
     setIsChatLoading(true);
 
     try {
+      const token3 = auth.currentUser ? await auth.currentUser.getIdToken() : "";
       const response = await fetch("/api/opponent/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token3}` },
         body: JSON.stringify({
           message: msg,
           history: updatedHistory
@@ -319,9 +326,10 @@ function solveGraphPath(nodes, origin) {
     setUserSubmitted(true);
 
     try {
+      const token4 = auth.currentUser ? await auth.currentUser.getIdToken() : "";
       const response = await fetch("/api/challenges/evaluate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token4}` },
         body: JSON.stringify({
           challenge: {
             title: "Tri de nœuds de graphe accéléré",

@@ -1,3 +1,4 @@
+import { auth } from "../firebase";
 import React, { useState, useEffect, useRef } from "react";
 import { 
   FolderOpen, 
@@ -111,10 +112,11 @@ export default function EditorView({ activeProject, onSaveFiles }: EditorViewPro
     }
 
     try {
+      const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
       const response = await fetch("/api/execute", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json", "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
           language: activeProject?.language || "JavaScript",
