@@ -40,11 +40,14 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
+          const token = await firebaseUser.getIdToken();
           const res = await fetch("/auth/login", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`
+            },
             body: JSON.stringify({
-              email: firebaseUser.email,
               username: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Invité",
               avatar: firebaseUser.photoURL || `https://api.dicebear.com/7.x/identicon/svg?seed=${firebaseUser.email}`,
               provider: firebaseUser.providerData[0]?.providerId || "password"
@@ -59,7 +62,8 @@ export default function App() {
         }
       } else {
         try {
-          await fetch("/auth/logout", { method: "POST" });
+          const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
+          await fetch("/auth/logout", { method: "POST", headers: { "Authorization": `Bearer ${token}` } });
         } catch (err) {
           console.warn("Erreur de déconnexion globale", err);
         }
@@ -81,7 +85,8 @@ export default function App() {
 
   const loadUserProfile = async () => {
     try {
-      const response = await fetch("/auth/me");
+      const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
+      const response = await fetch("/auth/me", { headers: { "Authorization": `Bearer ${token}` } });
       if (response.ok) {
         const u = await response.json();
         setUser(u);
@@ -104,9 +109,10 @@ export default function App() {
 
   const handleUpdateMe = async (updates: { username?: string; preferences?: any }) => {
     try {
+      const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
       const res = await fetch("/api/users/me", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify(updates)
       });
       if (res.ok) {
@@ -119,7 +125,8 @@ export default function App() {
 
   const handleDeleteMe = async () => {
     try {
-      await fetch("/api/users/me", { method: "DELETE" });
+      const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
+      await fetch("/api/users/me", { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } });
       setUser(null);
       setTab("home");
     } catch (err) {
@@ -204,9 +211,10 @@ if __name__ == "__main__":
       });
       // also set it directly
       try {
+        const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
         await fetch("/api/users/me", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
           body: JSON.stringify({ proPassUnlocked: true })
         });
         await loadUserProfile();
@@ -295,9 +303,10 @@ if __name__ == "__main__":
         user.level = Math.floor(user.totalScore / 500) + 1;
         user.recentScores.push(95);
         
+        const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
         await fetch("/api/users/me", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
           body: JSON.stringify(user)
         });
         await loadUserProfile();
@@ -315,9 +324,10 @@ if __name__ == "__main__":
         user.level = Math.floor(user.totalScore / 500) + 1;
         user.recentScores.push(65);
         
+        const token = auth.currentUser ? await auth.currentUser.getIdToken() : "";
         await fetch("/api/users/me", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
           body: JSON.stringify(user)
         });
         await loadUserProfile();
